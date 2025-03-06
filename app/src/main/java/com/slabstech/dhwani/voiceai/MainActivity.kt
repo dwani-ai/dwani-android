@@ -6,10 +6,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
-import android.widget.Button
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +23,8 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
@@ -36,20 +36,40 @@ class MainActivity : AppCompatActivity() {
     private lateinit var transcriptionScrollView: ScrollView
     private lateinit var responseText: TextView
     private lateinit var responseScrollView: ScrollView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var pushToTalkButton: Button
+    private lateinit var clearButton: Button
+    private lateinit var languageSpinner: Spinner
     private var isRecording = false
     private val SAMPLE_RATE = 16000 // 16 kHz
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+    private val MAX_RETRIES = 3
+    private val RETRY_DELAY_MS = 2000L // 2 seconds
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val pushToTalkButton = findViewById<Button>(R.id.pushToTalkButton)
         transcriptionText = findViewById(R.id.transcriptionText)
         transcriptionScrollView = findViewById(R.id.transcriptionScrollView)
         responseText = findViewById(R.id.responseText)
         responseScrollView = findViewById(R.id.responseScrollView)
+        progressBar = findViewById(R.id.progressBar)
+        pushToTalkButton = findViewById(R.id.pushToTalkButton)
+        clearButton = findViewById(R.id.clearButton)
+
+        // Language Spinner (added dynamically for simplicity)
+        val languages = arrayOf("kannada", "hindi", "tamil") // Add more as needed
+        val spinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 16, 0) }
+        }
+        findViewById<LinearLayout>(R.id.buttonLayout).addView(spinner, 0)
+        languageSpinner = spinner
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
@@ -72,6 +92,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             true
+        }
+
+        clearButton.setOnClickListener {
+            transcriptionText.text = "Transcription will appear here"
+            responseText.text = "Responses will appear here"
         }
     }
 
@@ -133,7 +158,7 @@ class MainActivity : AppCompatActivity() {
                 FileOutputStream(file).use { fos ->
                     val totalAudioLen = pcmData.size
                     val totalDataLen = totalAudioLen + 36
-                    val channels = 1 // Mono
+                    val channels = 1
                     val sampleRate = SAMPLE_RATE
                     val bitsPerSample = 16
                     val byteRate = sampleRate * channels * bitsPerSample / 8
@@ -169,11 +194,12 @@ class MainActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File?) {
         if (audioFile == null) return
 
-        // Configure OkHttpClient with longer timeouts
+        runOnUiThread { progressBar.visibility = View.VISIBLE }
+
         val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // Wait up to 30s to connect
-            .readTimeout(30, TimeUnit.SECONDS)    // Wait up to 30s for response
-            .writeTimeout(30, TimeUnit.SECONDS)   // Wait up to 30s to send data
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
         val requestBody = MultipartBody.Builder()
@@ -184,51 +210,70 @@ class MainActivity : AppCompatActivity() {
             )
             .build()
 
+        val language = languageSpinner.selectedItem.toString()
         val request = Request.Builder()
-            .url("https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/?language=kannada")
+            .url("https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/?language=$language")
             .header("accept", "application/json")
             .post(requestBody)
             .build()
 
         Thread {
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string()
-                    responseBody?.let {
-                        val json = JSONObject(it)
-                        val transcribedText = json.getString("text")
+            var attempts = 0
+            var success = false
+            var responseBody: String? = null
+
+            while (attempts < MAX_RETRIES && !success) {
+                try {
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        responseBody = response.body?.string()
+                        success = true
+                    } else {
+                        attempts++
+                        if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            val currentTranscription = transcriptionText.text.toString()
-                            transcriptionText.text = if (currentTranscription == "Transcription will appear here") {
-                                transcribedText
-                            } else {
-                                "$currentTranscription\n$transcribedText"
-                            }
-                            transcriptionScrollView.post { transcriptionScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
                         }
-                        getChatResponse(transcribedText)
                     }
-                } else {
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    attempts++
+                    if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Transcription API failed: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
+            }
+
+            responseBody?.let {
+                val json = JSONObject(it)
+                val transcribedText = json.getString("text")
+                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
                 runOnUiThread {
-                    Toast.makeText(this, "Network error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    val currentTranscription = transcriptionText.text.toString()
+                    transcriptionText.text = if (currentTranscription == "Transcription will appear here") {
+                        "$timestamp: $transcribedText"
+                    } else {
+                        "$currentTranscription\n$timestamp: $transcribedText"
+                    }
+                    transcriptionScrollView.post { transcriptionScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                    progressBar.visibility = View.GONE
                 }
+                getChatResponse(transcribedText)
+            } ?: runOnUiThread {
+                Toast.makeText(this, "Transcription failed after $MAX_RETRIES retries", Toast.LENGTH_SHORT).show()
+                progressBar.visibility = View.GONE
             }
         }.start()
     }
 
     private fun getChatResponse(prompt: String) {
-        // Configure OkHttpClient with longer timeouts
+        runOnUiThread { progressBar.visibility = View.VISIBLE }
+
         val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // Wait up to 30s to connect
-            .readTimeout(30, TimeUnit.SECONDS)    // Wait up to 30s for response
-            .writeTimeout(30, TimeUnit.SECONDS)   // Wait up to 30s to send data
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
         val jsonMediaType = "application/json".toMediaType()
@@ -241,33 +286,50 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         Thread {
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string()
-                    responseBody?.let {
-                        val json = JSONObject(it)
-                        val chatResponse = json.getString("response")
+            var attempts = 0
+            var success = false
+            var responseBody: String? = null
+
+            while (attempts < MAX_RETRIES && !success) {
+                try {
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        responseBody = response.body?.string()
+                        success = true
+                    } else {
+                        attempts++
+                        if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            val currentResponse = responseText.text.toString()
-                            responseText.text = if (currentResponse == "Responses will appear here") {
-                                chatResponse
-                            } else {
-                                "$currentResponse\n$chatResponse"
-                            }
-                            responseScrollView.post { responseScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } else {
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    attempts++
+                    if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Chat API failed: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
+            }
+
+            responseBody?.let {
+                val json = JSONObject(it)
+                val chatResponse = json.getString("response")
+                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
                 runOnUiThread {
-                    Toast.makeText(this, "Network error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    val currentResponse = responseText.text.toString()
+                    responseText.text = if (currentResponse == "Responses will appear here") {
+                        "$timestamp: $chatResponse"
+                    } else {
+                        "$currentResponse\n$timestamp: $chatResponse"
+                    }
+                    responseScrollView.post { responseScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                    progressBar.visibility = View.GONE
                 }
+            } ?: runOnUiThread {
+                Toast.makeText(this, "Chat failed after $MAX_RETRIES retries", Toast.LENGTH_SHORT).show()
+                progressBar.visibility = View.GONE
             }
         }.start()
     }

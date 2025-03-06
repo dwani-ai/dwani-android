@@ -5,4 +5,5 @@
     <color name="background">#F5F5F5</color>
     <color name="surface">#FFFFFF</color>
     <color name="text_primary">#212121</color>
+    <color name="fab_blue">#2196F3</color>
 </resources>

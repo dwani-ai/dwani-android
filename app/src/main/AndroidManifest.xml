@@ -14,13 +14,17 @@
         android:theme="@style/Theme.DhwaniVoiceAI.Light">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".OnboardingActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"/>
 
         <activity
             android:name=".SettingsActivity"
@@ -31,5 +35,4 @@
                 android:value=".MainActivity" />
         </activity>
     </application>
-
 </manifest>

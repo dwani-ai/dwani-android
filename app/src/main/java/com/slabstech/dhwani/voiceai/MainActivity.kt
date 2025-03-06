@@ -25,6 +25,8 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.appcompat.app.ActionBarDrawerToggle
 import com.google.android.material.navigation.NavigationView
 import android.view.MenuItem
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -72,6 +74,15 @@ class MainActivity : AppCompatActivity() {
             setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
             currentTheme = isDarkTheme
         }
+
+        // Check if first launch
+        val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
+        if (isFirstLaunch) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -112,7 +123,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.nav_auto_scroll -> {
                     menuItem.isChecked = !menuItem.isChecked
-                    // Auto-scroll toggle handled via menu item state
                     drawerLayout.closeDrawers()
                     true
                 }
@@ -133,13 +143,12 @@ class MainActivity : AppCompatActivity() {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startRecording()
-                    pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+                    animateFabRecordingStart()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     stopRecording()
-                    pushToTalkFab.setImageResource(R.drawable.ic_mic)
-                    audioLevelBar.progress = 0
+                    animateFabRecordingStop()
                     true
                 }
                 else -> false
@@ -156,6 +165,32 @@ class MainActivity : AppCompatActivity() {
             lastTranscription?.let { getChatResponse(it) }
                 ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun animateFabRecordingStart() {
+        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
+        )
+        scaleUp.duration = 200
+        scaleUp.start()
+
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+    }
+
+    private fun animateFabRecordingStop() {
+        pushToTalkFab.setImageResource(R.drawable.ic_mic)
+        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
+        )
+        scaleDown.duration = 200
+        scaleDown.start()
+
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.fab_blue)
     }
 
     private fun showDeleteConfirmationDialog(position: Int) {

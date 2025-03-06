@@ -5,45 +5,29 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Transcription ScrollView -->
-    <ScrollView
-        android:id="@+id/transcriptionScrollView"
+    <!-- Audio Level Indicator -->
+    <ProgressBar
+        android:id="@+id/audioLevelBar"
+        style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="0"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/responseScrollView"
-        android:layout_margin="16dp">
+        android:layout_margin="16dp"/>
 
-        <TextView
-            android:id="@+id/transcriptionText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Transcription will appear here"
-            android:textSize="18sp"
-            android:padding="8dp"/>
-    </ScrollView>
-
-    <!-- Response ScrollView -->
-    <ScrollView
-        android:id="@+id/responseScrollView"
+    <!-- RecyclerView for History -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/historyRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/transcriptionScrollView"
+        app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/buttonLayout"
-        android:layout_margin="16dp">
-
-        <TextView
-            android:id="@+id/responseText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Responses will appear here"
-            android:textSize="18sp"
-            android:padding="8dp"/>
-    </ScrollView>
+        android:layout_margin="16dp"/>
 
     <!-- Button Layout -->
     <LinearLayout
@@ -57,6 +41,12 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginBottom="16dp">
 
+        <Spinner
+            android:id="@+id/languageSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"/>
+
         <Button
             android:id="@+id/pushToTalkButton"
             android:layout_width="wrap_content"
@@ -68,10 +58,25 @@
             android:id="@+id/clearButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Clear"/>
+            android:text="Clear"
+            android:layout_marginEnd="16dp"/>
+
+        <Button
+            android:id="@+id/repeatButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Repeat"
+            android:layout_marginEnd="16dp"/>
+
+        <CheckBox
+            android:id="@+id/autoScrollToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Auto-Scroll"
+            android:checked="true"/>
     </LinearLayout>
 
-    <!-- ProgressBar -->
+    <!-- ProgressBar for API calls -->
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"

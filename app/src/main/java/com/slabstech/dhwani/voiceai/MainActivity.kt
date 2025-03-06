@@ -6,11 +6,15 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -26,19 +30,20 @@ import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
-    private lateinit var transcriptionText: TextView
-    private lateinit var transcriptionScrollView: ScrollView
-    private lateinit var responseText: TextView
-    private lateinit var responseScrollView: ScrollView
+    private lateinit var historyRecyclerView: RecyclerView
+    private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkButton: Button
     private lateinit var clearButton: Button
+    private lateinit var repeatButton: Button
+    private lateinit var autoScrollToggle: CheckBox
     private lateinit var languageSpinner: Spinner
     private var isRecording = false
     private val SAMPLE_RATE = 16000 // 16 kHz
@@ -46,30 +51,33 @@ class MainActivity : AppCompatActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MAX_RETRIES = 3
     private val RETRY_DELAY_MS = 2000L // 2 seconds
+    private val messageList = mutableListOf<Message>()
+    private lateinit var messageAdapter: MessageAdapter
+    private var lastTranscription: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        transcriptionText = findViewById(R.id.transcriptionText)
-        transcriptionScrollView = findViewById(R.id.transcriptionScrollView)
-        responseText = findViewById(R.id.responseText)
-        responseScrollView = findViewById(R.id.responseScrollView)
+        historyRecyclerView = findViewById(R.id.historyRecyclerView)
+        audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
         pushToTalkButton = findViewById(R.id.pushToTalkButton)
         clearButton = findViewById(R.id.clearButton)
+        repeatButton = findViewById(R.id.repeatButton)
+        autoScrollToggle = findViewById(R.id.autoScrollToggle)
+        languageSpinner = findViewById(R.id.languageSpinner)
 
-        // Language Spinner (added dynamically for simplicity)
-        val languages = arrayOf("kannada", "hindi", "tamil") // Add more as needed
-        val spinner = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 16, 0) }
+        // Setup RecyclerView
+        messageAdapter = MessageAdapter(messageList)
+        historyRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = messageAdapter
         }
-        findViewById<LinearLayout>(R.id.buttonLayout).addView(spinner, 0)
-        languageSpinner = spinner
+
+        // Language Spinner
+        val languages = arrayOf("kannada", "hindi", "tamil")
+        languageSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, languages)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
@@ -89,14 +97,21 @@ class MainActivity : AppCompatActivity() {
                 android.view.MotionEvent.ACTION_UP -> {
                     stopRecording()
                     pushToTalkButton.text = "Push to Talk"
+                    audioLevelBar.progress = 0
                 }
             }
             true
         }
 
         clearButton.setOnClickListener {
-            transcriptionText.text = "Transcription will appear here"
-            responseText.text = "Responses will appear here"
+            messageList.clear()
+            lastTranscription = null
+            messageAdapter.notifyDataSetChanged()
+        }
+
+        repeatButton.setOnClickListener {
+            lastTranscription?.let { getChatResponse(it) }
+                ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -129,6 +144,10 @@ class MainActivity : AppCompatActivity() {
                     val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                     if (bytesRead > 0) {
                         recordedData.addAll(audioBuffer.take(bytesRead))
+                        val rms = calculateRMS(audioBuffer, bytesRead)
+                        runOnUiThread {
+                            audioLevelBar.progress = (rms * 100).toInt().coerceIn(0, 100)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -146,6 +165,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun calculateRMS(buffer: ByteArray, bytesRead: Int): Float {
+        var sum = 0L
+        for (i in 0 until bytesRead step 2) {
+            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+            sum += sample * sample
+        }
+        val meanSquare = sum / (bytesRead / 2)
+        return (Math.sqrt(meanSquare.toDouble()) / 32768.0).toFloat()
     }
 
     private fun stopRecording() {
@@ -249,14 +278,14 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(it)
                 val transcribedText = json.getString("text")
                 val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                lastTranscription = transcribedText
+                val message = Message("Transcription [$timestamp]: $transcribedText", true)
                 runOnUiThread {
-                    val currentTranscription = transcriptionText.text.toString()
-                    transcriptionText.text = if (currentTranscription == "Transcription will appear here") {
-                        "$timestamp: $transcribedText"
-                    } else {
-                        "$currentTranscription\n$timestamp: $transcribedText"
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    if (autoScrollToggle.isChecked) {
+                        historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
-                    transcriptionScrollView.post { transcriptionScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
                     progressBar.visibility = View.GONE
                 }
                 getChatResponse(transcribedText)
@@ -317,14 +346,13 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(it)
                 val chatResponse = json.getString("response")
                 val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                val message = Message("Response [$timestamp]: $chatResponse", false)
                 runOnUiThread {
-                    val currentResponse = responseText.text.toString()
-                    responseText.text = if (currentResponse == "Responses will appear here") {
-                        "$timestamp: $chatResponse"
-                    } else {
-                        "$currentResponse\n$timestamp: $chatResponse"
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    if (autoScrollToggle.isChecked) {
+                        historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
-                    responseScrollView.post { responseScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
                     progressBar.visibility = View.GONE
                 }
             } ?: runOnUiThread {
@@ -354,4 +382,31 @@ class MainActivity : AppCompatActivity() {
         audioRecord?.release()
         audioRecord = null
     }
+}
+
+data class Message(val text: String, val isTranscription: Boolean)
+
+class MessageAdapter(private val messages: List<Message>) :
+    RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
+
+    class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val messageText: TextView = itemView.findViewById(R.id.messageText)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
+        return MessageViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
+        val message = messages[position]
+        holder.messageText.text = message.text
+        // Style based on type
+        holder.messageText.setTextColor(
+            if (message.isTranscription) 0xFF2196F3.toInt() else 0xFF4CAF50.toInt() // Blue for transcription, green for response
+        )
+        holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
+    }
+
+    override fun getItemCount(): Int = messages.size
 }

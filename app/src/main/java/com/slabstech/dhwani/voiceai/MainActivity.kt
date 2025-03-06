@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -58,7 +59,7 @@ class MainActivity : AppCompatActivity() {
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastTranscription: String? = null
-    private var currentTheme: Boolean? = null // Track current theme state
+    private var currentTheme: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -80,7 +81,9 @@ class MainActivity : AppCompatActivity() {
         autoScrollToggle = findViewById(R.id.autoScrollToggle)
 
         // Setup RecyclerView
-        messageAdapter = MessageAdapter(messageList)
+        messageAdapter = MessageAdapter(messageList) { position ->
+            showDeleteConfirmationDialog(position)
+        }
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
@@ -128,9 +131,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showDeleteConfirmationDialog(position: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Message")
+            .setMessage("Are you sure you want to delete this message?")
+            .setPositiveButton("Yes") { _, _ ->
+                if (position >= 0 && position < messageList.size) {
+                    messageList.removeAt(position)
+                    messageAdapter.notifyItemRemoved(position)
+                    messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                }
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
-        // Check if theme changed and recreate only if necessary
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         if (currentTheme != isDarkTheme) {
@@ -416,8 +433,10 @@ class MainActivity : AppCompatActivity() {
 
 data class Message(val text: String, val isTranscription: Boolean)
 
-class MessageAdapter(private val messages: List<Message>) :
-    RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
+class MessageAdapter(
+    private val messages: MutableList<Message>,
+    private val onLongClick: (Int) -> Unit
+) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
@@ -437,6 +456,12 @@ class MessageAdapter(private val messages: List<Message>) :
         holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
+
+        // Long-press listener
+        holder.itemView.setOnLongClickListener {
+            onLongClick(position)
+            true
+        }
     }
 
     override fun getItemCount(): Int = messages.size

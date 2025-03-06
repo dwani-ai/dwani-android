@@ -21,6 +21,10 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import androidx.drawerlayout.widget.DrawerLayout
+import androidx.appcompat.app.ActionBarDrawerToggle
+import com.google.android.material.navigation.NavigationView
+import android.view.MenuItem
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -47,10 +51,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
-    private lateinit var settingsButton: Button
     private lateinit var clearButton: Button
     private lateinit var repeatButton: Button
-    private lateinit var autoScrollToggle: CheckBox
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var navView: NavigationView
     private var isRecording = false
     private val SAMPLE_RATE = 16000 // 16 kHz
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -75,10 +79,10 @@ class MainActivity : AppCompatActivity() {
         audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
         pushToTalkFab = findViewById(R.id.pushToTalkFab)
-        settingsButton = findViewById(R.id.settingsButton)
         clearButton = findViewById(R.id.clearButton)
         repeatButton = findViewById(R.id.repeatButton)
-        autoScrollToggle = findViewById(R.id.autoScrollToggle)
+        drawerLayout = findViewById(R.id.drawer_layout)
+        navView = findViewById(R.id.nav_view)
 
         // Setup RecyclerView
         messageAdapter = MessageAdapter(messageList) { position ->
@@ -87,6 +91,33 @@ class MainActivity : AppCompatActivity() {
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
+        }
+
+        // Setup Toolbar and Drawer Toggle
+        setSupportActionBar(findViewById(androidx.appcompat.R.id.action_bar))
+        val toggle = ActionBarDrawerToggle(
+            this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close
+        )
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        // Navigation Drawer Menu Handling
+        navView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    drawerLayout.closeDrawers()
+                    true
+                }
+                R.id.nav_auto_scroll -> {
+                    menuItem.isChecked = !menuItem.isChecked
+                    // Auto-scroll toggle handled via menu item state
+                    drawerLayout.closeDrawers()
+                    true
+                }
+                else -> false
+            }
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -115,10 +146,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        settingsButton.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
-
         clearButton.setOnClickListener {
             messageList.clear()
             lastTranscription = null
@@ -144,6 +171,15 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("No", null)
             .show()
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return if (item.itemId == android.R.id.home) {
+            drawerLayout.openDrawer(androidx.core.view.GravityCompat.START)
+            true
+        } else {
+            super.onOptionsItemSelected(item)
+        }
     }
 
     override fun onResume() {
@@ -328,7 +364,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (autoScrollToggle.isChecked) {
+                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
@@ -399,7 +435,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (autoScrollToggle.isChecked) {
+                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE

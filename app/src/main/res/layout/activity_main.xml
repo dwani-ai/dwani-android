@@ -2,79 +2,113 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F5F5F5"
+    tools:context=".MainActivity">
 
     <!-- Audio Level Indicator -->
     <ProgressBar
         android:id="@+id/audioLevelBar"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="8dp"
         android:max="100"
         android:progress="0"
+        android:progressTint="#2196F3"
+        android:background="#E0E0E0"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_margin="16dp"/>
+        android:layout_margin="16dp"
+        android:layout_marginTop="8dp"/>
 
     <!-- RecyclerView for History -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/historyRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:background="#FFFFFF"
+        android:padding="8dp"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/buttonLayout"
-        android:layout_margin="16dp"/>
+        app:layout_constraintBottom_toTopOf="@id/buttonScrollView"
+        android:layout_margin="16dp"
+        android:elevation="4dp"/>
 
-    <!-- Button Layout -->
-    <LinearLayout
-        android:id="@+id/buttonLayout"
+    <!-- Horizontal ScrollView for Buttons -->
+    <HorizontalScrollView
+        android:id="@+id/buttonScrollView"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
+        android:background="#FFFFFF"
+        android:elevation="4dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="16dp">
+        android:layout_margin="16dp"
+        android:padding="8dp">
 
-        <Spinner
-            android:id="@+id/languageSpinner"
+        <LinearLayout
+            android:id="@+id/buttonLayout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"/>
+            android:orientation="horizontal"
+            android:gravity="center">
 
-        <Button
-            android:id="@+id/pushToTalkButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Push to Talk"
-            android:layout_marginEnd="16dp"/>
+            <Spinner
+                android:id="@+id/languageSpinner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#2196F3"
+                android:layout_marginEnd="8dp"/>
 
-        <Button
-            android:id="@+id/clearButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Clear"
-            android:layout_marginEnd="16dp"/>
+            <Button
+                android:id="@+id/pushToTalkButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Push to Talk"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#2196F3"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:elevation="2dp"/>
 
-        <Button
-            android:id="@+id/repeatButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Repeat"
-            android:layout_marginEnd="16dp"/>
+            <Button
+                android:id="@+id/clearButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Clear"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#F44336"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:elevation="2dp"/>
 
-        <CheckBox
-            android:id="@+id/autoScrollToggle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Auto-Scroll"
-            android:checked="true"/>
-    </LinearLayout>
+            <Button
+                android:id="@+id/repeatButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Repeat"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#4CAF50"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:elevation="2dp"/>
+
+            <CheckBox
+                android:id="@+id/autoScrollToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Auto-Scroll"
+                android:textColor="#212121"
+                android:buttonTint="#2196F3"
+                android:checked="true"/>
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <!-- ProgressBar for API calls -->
     <ProgressBar

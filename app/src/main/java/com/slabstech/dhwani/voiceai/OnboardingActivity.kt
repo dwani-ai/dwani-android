@@ -5,9 +5,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView // Added import
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView // Added import
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.preference.PreferenceManager
@@ -79,7 +79,7 @@ class OnboardingActivity : AppCompatActivity() {
         PreferenceManager.getDefaultSharedPreferences(this)
             .edit()
             .putBoolean("is_first_launch", false)
-            .apply()
+            .commit() // Changed from apply() to commit() for synchronous save
         startActivity(Intent(this, MainActivity::class.java))
         finish()
     }

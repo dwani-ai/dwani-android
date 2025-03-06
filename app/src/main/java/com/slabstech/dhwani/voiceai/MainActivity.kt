@@ -7,6 +7,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -16,7 +17,6 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +27,7 @@ import com.google.android.material.navigation.NavigationView
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
+import androidx.core.content.ContextCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -67,6 +68,9 @@ class MainActivity : AppCompatActivity() {
     private var lastTranscription: String? = null
     private var currentTheme: Boolean? = null
 
+    // Flag to disable onboarding
+    private val DISABLE_ONBOARDING = true // Set to true to disable, false to enable
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -75,12 +79,15 @@ class MainActivity : AppCompatActivity() {
             currentTheme = isDarkTheme
         }
 
-        // Check if first launch
-        val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
-        if (isFirstLaunch) {
-            startActivity(Intent(this, OnboardingActivity::class.java))
-            finish()
-            return
+        // Check if onboarding should be shown (only if DISABLE_ONBOARDING is false)
+        if (!DISABLE_ONBOARDING) {
+            val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
+            Log.d("MainActivity", "isFirstLaunch: $isFirstLaunch")
+            if (isFirstLaunch) {
+                startActivity(Intent(this, OnboardingActivity::class.java))
+                finish()
+                return
+            }
         }
 
         super.onCreate(savedInstanceState)

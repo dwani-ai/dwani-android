@@ -34,4 +34,9 @@
         android:defaultValue="https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
         android:inputType="textUri"
         android:summary="Set the URL for the chat API"/>
+
+    <Preference
+        android:key="test_endpoints"
+        android:title="Test Endpoints"
+        android:summary="Check if the API endpoints are reachable"/>
 </PreferenceScreen>

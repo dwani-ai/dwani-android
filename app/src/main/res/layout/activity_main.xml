@@ -50,6 +50,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_margin="16dp"
+        android:layout_marginBottom="72dp"
         android:padding="8dp">
 
         <LinearLayout
@@ -59,18 +60,11 @@
             android:orientation="horizontal"
             android:gravity="center">
 
-            <Spinner
-                android:id="@+id/languageSpinner"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:backgroundTint="#2196F3"
-                android:layout_marginEnd="8dp"/>
-
             <Button
-                android:id="@+id/pushToTalkButton"
+                android:id="@+id/settingsButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Push to Talk"
+                android:text="Settings"
                 android:textColor="#FFFFFF"
                 android:backgroundTint="#2196F3"
                 android:padding="8dp"
@@ -109,6 +103,20 @@
                 android:checked="true"/>
         </LinearLayout>
     </HorizontalScrollView>
+
+    <!-- Floating Action Button for Push to Talk -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/pushToTalkFab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@drawable/ic_mic"
+        android:contentDescription="Push to Talk"
+        app:backgroundTint="#2196F3"
+        app:tint="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_margin="16dp"
+        android:elevation="6dp"/>
 
     <!-- ProgressBar for API calls -->
     <ProgressBar

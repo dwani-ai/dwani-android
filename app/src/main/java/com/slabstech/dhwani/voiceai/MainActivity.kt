@@ -1,20 +1,25 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -40,33 +45,39 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
-    private lateinit var pushToTalkButton: Button
+    private lateinit var pushToTalkFab: FloatingActionButton
+    private lateinit var settingsButton: Button
     private lateinit var clearButton: Button
     private lateinit var repeatButton: Button
     private lateinit var autoScrollToggle: CheckBox
-    private lateinit var languageSpinner: Spinner
     private var isRecording = false
     private val SAMPLE_RATE = 16000 // 16 kHz
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MAX_RETRIES = 3
-    private val RETRY_DELAY_MS = 2000L // 2 seconds
+    private val RETRY_DELAY_MS = 2000L // 2 seconds delay between retries
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastTranscription: String? = null
+    private var currentTheme: Boolean? = null // Track current theme state
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme == null || currentTheme != isDarkTheme) {
+            setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
+            currentTheme = isDarkTheme
+        }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
         audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
-        pushToTalkButton = findViewById(R.id.pushToTalkButton)
+        pushToTalkFab = findViewById(R.id.pushToTalkFab)
+        settingsButton = findViewById(R.id.settingsButton)
         clearButton = findViewById(R.id.clearButton)
         repeatButton = findViewById(R.id.repeatButton)
         autoScrollToggle = findViewById(R.id.autoScrollToggle)
-        languageSpinner = findViewById(R.id.languageSpinner)
 
         // Setup RecyclerView
         messageAdapter = MessageAdapter(messageList)
@@ -74,10 +85,6 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
         }
-
-        // Language Spinner
-        val languages = arrayOf("kannada", "hindi", "tamil")
-        languageSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, languages)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
@@ -88,19 +95,25 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        pushToTalkButton.setOnTouchListener { _, event ->
+        pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
+                MotionEvent.ACTION_DOWN -> {
                     startRecording()
-                    pushToTalkButton.text = "Recording..."
+                    pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+                    true
                 }
-                android.view.MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP -> {
                     stopRecording()
-                    pushToTalkButton.text = "Push to Talk"
+                    pushToTalkFab.setImageResource(R.drawable.ic_mic)
                     audioLevelBar.progress = 0
+                    true
                 }
+                else -> false
             }
-            true
+        }
+
+        settingsButton.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
 
         clearButton.setOnClickListener {
@@ -112,6 +125,17 @@ class MainActivity : AppCompatActivity() {
         repeatButton.setOnClickListener {
             lastTranscription?.let { getChatResponse(it) }
                 ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Check if theme changed and recreate only if necessary
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
         }
     }
 
@@ -225,6 +249,10 @@ class MainActivity : AppCompatActivity() {
 
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val language = prefs.getString("language", "kannada") ?: "kannada"
+        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -239,7 +267,6 @@ class MainActivity : AppCompatActivity() {
             )
             .build()
 
-        val language = languageSpinner.selectedItem.toString()
         val request = Request.Builder()
             .url("https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/?language=$language")
             .header("accept", "application/json")
@@ -251,7 +278,7 @@ class MainActivity : AppCompatActivity() {
             var success = false
             var responseBody: String? = null
 
-            while (attempts < MAX_RETRIES && !success) {
+            while (attempts < maxRetries && !success) {
                 try {
                     val response = client.newCall(request).execute()
                     if (response.isSuccessful) {
@@ -259,17 +286,17 @@ class MainActivity : AppCompatActivity() {
                         success = true
                     } else {
                         attempts++
-                        if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
+                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } catch (e: IOException) {
                     e.printStackTrace()
                     attempts++
-                    if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
+                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -290,7 +317,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 getChatResponse(transcribedText)
             } ?: runOnUiThread {
-                Toast.makeText(this, "Transcription failed after $MAX_RETRIES retries", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Transcription failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
@@ -298,6 +325,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun getChatResponse(prompt: String) {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -319,7 +349,7 @@ class MainActivity : AppCompatActivity() {
             var success = false
             var responseBody: String? = null
 
-            while (attempts < MAX_RETRIES && !success) {
+            while (attempts < maxRetries && !success) {
                 try {
                     val response = client.newCall(request).execute()
                     if (response.isSuccessful) {
@@ -327,17 +357,17 @@ class MainActivity : AppCompatActivity() {
                         success = true
                     } else {
                         attempts++
-                        if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
+                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } catch (e: IOException) {
                     e.printStackTrace()
                     attempts++
-                    if (attempts < MAX_RETRIES) Thread.sleep(RETRY_DELAY_MS)
+                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$MAX_RETRIES)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -356,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                     progressBar.visibility = View.GONE
                 }
             } ?: runOnUiThread {
-                Toast.makeText(this, "Chat failed after $MAX_RETRIES retries", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Chat failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
@@ -401,11 +431,12 @@ class MessageAdapter(private val messages: List<Message>) :
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
         val message = messages[position]
         holder.messageText.text = message.text
-        // Style based on type
         holder.messageText.setTextColor(
-            if (message.isTranscription) 0xFF2196F3.toInt() else 0xFF4CAF50.toInt() // Blue for transcription, green for response
+            if (message.isTranscription) 0xFF2196F3.toInt() else 0xFF4CAF50.toInt()
         )
         holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
+        val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+        holder.itemView.startAnimation(animation)
     }
 
     override fun getItemCount(): Int = messages.size

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <ListPreference
+        android:key="language"
+        android:title="Language"
+        android:defaultValue="kannada"
+        android:entries="@array/language_names"
+        android:entryValues="@array/language_values"
+        android:summary="Select the transcription language"/>
+
+    <SwitchPreferenceCompat
+        android:key="dark_theme"
+        android:title="Dark Theme"
+        android:defaultValue="false"
+        android:summary="Enable dark mode"/>
+
+    <EditTextPreference
+        android:key="max_retries"
+        android:title="Max API Retries"
+        android:defaultValue="3"
+        android:inputType="number"
+        android:summary="Set the number of retry attempts for API calls"/>
+</PreferenceScreen>

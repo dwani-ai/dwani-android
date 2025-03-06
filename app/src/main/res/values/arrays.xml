@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="language_names">
+        <item>Kannada</item>
+        <item>Hindi</item>
+        <item>Tamil</item>
+    </string-array>
+    <string-array name="language_values">
+        <item>kannada</item>
+        <item>hindi</item>
+        <item>tamil</item>
+    </string-array>
+</resources>

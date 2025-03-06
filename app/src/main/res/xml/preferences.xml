@@ -20,4 +20,18 @@
         android:defaultValue="3"
         android:inputType="number"
         android:summary="Set the number of retry attempts for API calls"/>
+
+    <EditTextPreference
+        android:key="transcription_api_endpoint"
+        android:title="Transcription API Endpoint"
+        android:defaultValue="https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+        android:inputType="textUri"
+        android:summary="Set the URL for the transcription API"/>
+
+    <EditTextPreference
+        android:key="chat_api_endpoint"
+        android:title="Chat API Endpoint"
+        android:defaultValue="https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        android:inputType="textUri"
+        android:summary="Set the URL for the chat API"/>
 </PreferenceScreen>

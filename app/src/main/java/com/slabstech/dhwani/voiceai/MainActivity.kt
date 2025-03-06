@@ -269,6 +269,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -285,7 +286,7 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         val request = Request.Builder()
-            .url("https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/?language=$language")
+            .url("$transcriptionApiEndpoint?language=$language")
             .header("accept", "application/json")
             .post(requestBody)
             .build()
@@ -345,6 +346,7 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -356,7 +358,7 @@ class MainActivity : AppCompatActivity() {
         val requestBody = JSONObject().put("prompt", prompt).toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
-            .url("https://gaganyatri-llm-indic-server-cpu.hf.space/chat")
+            .url(chatApiEndpoint)
             .header("accept", "application/json")
             .post(requestBody)
             .build()
@@ -457,7 +459,6 @@ class MessageAdapter(
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
 
-        // Long-press listener
         holder.itemView.setOnLongClickListener {
             onLongClick(position)
             true

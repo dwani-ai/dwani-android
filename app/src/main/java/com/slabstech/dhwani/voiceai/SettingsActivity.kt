@@ -66,6 +66,17 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
+            // Validate Chat API Key (optional - ensure not empty)
+            findPreference<EditTextPreference>("chat_api_key")?.apply {
+                setOnPreferenceChangeListener { _, newValue ->
+                    val isValid = newValue.toString().isNotEmpty()
+                    if (!isValid) {
+                        Toast.makeText(context, "Chat API Key cannot be empty", Toast.LENGTH_SHORT).show()
+                    }
+                    isValid
+                }
+            }
+
             // Test Endpoints Button
             findPreference<Preference>("test_endpoints")?.apply {
                 setOnPreferenceClickListener {
@@ -87,8 +98,8 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun testEndpoints() {
             val prefs = preferenceManager.sharedPreferences
-            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
-            val chatUrl = prefs?.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: ""
+            val chatUrl = prefs?.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: ""
             val language = prefs?.getString("language", "kannada") ?: "kannada"
 
             CoroutineScope(Dispatchers.Main).launch {

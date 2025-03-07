@@ -35,6 +35,13 @@
         android:inputType="textUri"
         android:summary="Set the URL for the chat API"/>
 
+    <EditTextPreference
+        android:key="chat_api_key"
+        android:title="Chat API Key"
+        android:defaultValue=""
+        android:inputType="textPassword"
+        android:summary="Enter your secure API key for the chat endpoint"/>
+
     <Preference
         android:key="test_endpoints"
         android:title="Test Endpoints"

@@ -7,13 +7,15 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
-import android.widget.*
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -21,9 +23,8 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import androidx.drawerlayout.widget.DrawerLayout
-import androidx.appcompat.app.ActionBarDrawerToggle
-import com.google.android.material.navigation.NavigationView
+import androidx.appcompat.widget.Toolbar
+import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
@@ -51,25 +52,23 @@ class MainActivity : AppCompatActivity() {
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
     private lateinit var historyRecyclerView: RecyclerView
-    private lateinit var audioLevelBar: ProgressBar
-    private lateinit var progressBar: ProgressBar
+    private lateinit var audioLevelBar: android.widget.ProgressBar
+    private lateinit var progressBar: android.widget.ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
-    private lateinit var clearButton: Button
-    private lateinit var repeatButton: Button
-    private lateinit var drawerLayout: DrawerLayout
-    private lateinit var navView: NavigationView
+    private lateinit var clearButton: android.widget.Button
+    private lateinit var repeatButton: android.widget.Button
+    private lateinit var textQueryInput: EditText
+    private lateinit var sendButton: ImageButton
+    private lateinit var toolbar: Toolbar
     private var isRecording = false
-    private val SAMPLE_RATE = 16000 // 16 kHz
+    private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val RETRY_DELAY_MS = 2000L // 2 seconds delay between retries
+    private val RETRY_DELAY_MS = 2000L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastTranscription: String? = null
     private var currentTheme: Boolean? = null
-
-    // Flag to disable onboarding
-    private val DISABLE_ONBOARDING = true // Set to true to disable, false to enable
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -77,17 +76,6 @@ class MainActivity : AppCompatActivity() {
         if (currentTheme == null || currentTheme != isDarkTheme) {
             setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
             currentTheme = isDarkTheme
-        }
-
-        // Check if onboarding should be shown (only if DISABLE_ONBOARDING is false)
-        if (!DISABLE_ONBOARDING) {
-            val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
-            Log.d("MainActivity", "isFirstLaunch: $isFirstLaunch")
-            if (isFirstLaunch) {
-                startActivity(Intent(this, OnboardingActivity::class.java))
-                finish()
-                return
-            }
         }
 
         super.onCreate(savedInstanceState)
@@ -99,42 +87,18 @@ class MainActivity : AppCompatActivity() {
         pushToTalkFab = findViewById(R.id.pushToTalkFab)
         clearButton = findViewById(R.id.clearButton)
         repeatButton = findViewById(R.id.repeatButton)
-        drawerLayout = findViewById(R.id.drawer_layout)
-        navView = findViewById(R.id.nav_view)
+        textQueryInput = findViewById(R.id.textQueryInput)
+        sendButton = findViewById(R.id.sendButton)
+        toolbar = findViewById(R.id.toolbar)
 
-        // Setup RecyclerView
+        setSupportActionBar(toolbar)
+
         messageAdapter = MessageAdapter(messageList) { position ->
             showDeleteConfirmationDialog(position)
         }
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
-        }
-
-        // Setup Toolbar and Drawer Toggle
-        setSupportActionBar(findViewById(androidx.appcompat.R.id.action_bar))
-        val toggle = ActionBarDrawerToggle(
-            this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close
-        )
-        drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
-        // Navigation Drawer Menu Handling
-        navView.setNavigationItemSelectedListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
-                    drawerLayout.closeDrawers()
-                    true
-                }
-                R.id.nav_auto_scroll -> {
-                    menuItem.isChecked = !menuItem.isChecked
-                    drawerLayout.closeDrawers()
-                    true
-                }
-                else -> false
-            }
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -172,6 +136,52 @@ class MainActivity : AppCompatActivity() {
             lastTranscription?.let { getChatResponse(it) }
                 ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
         }
+
+        sendButton.setOnClickListener {
+            val query = textQueryInput.text.toString().trim()
+            if (query.isNotEmpty()) {
+                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                val message = Message("Query [$timestamp]: $query", true)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
+                    historyRecyclerView.scrollToPosition(messageList.size - 1)
+                }
+                getChatResponse(query)
+                textQueryInput.text.clear() // Clear input after sending
+            } else {
+                Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_auto_scroll -> {
+                item.isChecked = !item.isChecked
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
+        }
     }
 
     private fun animateFabRecordingStart() {
@@ -183,7 +193,6 @@ class MainActivity : AppCompatActivity() {
         )
         scaleUp.duration = 200
         scaleUp.start()
-
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
     }
 
@@ -196,8 +205,7 @@ class MainActivity : AppCompatActivity() {
         )
         scaleDown.duration = 200
         scaleDown.start()
-
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.fab_blue)
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
     private fun showDeleteConfirmationDialog(position: Int) {
@@ -213,25 +221,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("No", null)
             .show()
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return if (item.itemId == android.R.id.home) {
-            drawerLayout.openDrawer(androidx.core.view.GravityCompat.START)
-            true
-        } else {
-            super.onOptionsItemSelected(item)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val isDarkTheme = prefs.getBoolean("dark_theme", false)
-        if (currentTheme != isDarkTheme) {
-            currentTheme = isDarkTheme
-            recreate()
-        }
     }
 
     private fun startRecording() {
@@ -406,7 +395,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
+                    if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
@@ -425,6 +414,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        val chatApiKey = "your-new-secret-api-key" // Hardcoded for testing
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -438,6 +428,7 @@ class MainActivity : AppCompatActivity() {
         val request = Request.Builder()
             .url(chatApiEndpoint)
             .header("accept", "application/json")
+            .header("X-API-Key", chatApiKey)
             .post(requestBody)
             .build()
 
@@ -477,7 +468,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
+                    if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
@@ -530,10 +521,8 @@ class MessageAdapter(
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
         val message = messages[position]
         holder.messageText.text = message.text
-        holder.messageText.setTextColor(
-            if (message.isTranscription) 0xFF2196F3.toInt() else 0xFF4CAF50.toInt()
-        )
         holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
+        holder.messageText.isActivated = message.isTranscription
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
 

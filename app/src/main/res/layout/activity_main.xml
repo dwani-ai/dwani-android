@@ -1,121 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.drawerlayout.widget.DrawerLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
-    tools:context=".MainActivity">
+    android:background="@color/whatsapp_background">
 
-    <!-- Main Content -->
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <!-- App Bar -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        android:background="@color/whatsapp_green">
 
-        <!-- Audio Level Indicator -->
-        <ProgressBar
-            android:id="@+id/audioLevelBar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="0dp"
-            android:layout_height="8dp"
-            android:max="100"
-            android:progress="0"
-            android:progressTint="#2196F3"
-            android:background="#E0E0E0"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_margin="16dp"
-            android:layout_marginTop="8dp"/>
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="Dhwani Voice AI"
+            app:titleTextColor="#FFFFFF"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+    </com.google.android.material.appbar.AppBarLayout>
 
-        <!-- RecyclerView for History -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/historyRecyclerView"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:background="#FFFFFF"
-            android:padding="8dp"
-            android:clipToPadding="false"
-            app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/buttonLayout"
-            android:layout_margin="16dp"
-            android:elevation="4dp"/>
+    <!-- Audio Level Indicator -->
+    <ProgressBar
+        android:id="@+id/audioLevelBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="#075E54"
+        android:background="#D0C8B8"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:layout_marginTop="8dp"
+        android:layout_margin="8dp"/>
 
-        <!-- Remaining Buttons -->
-        <LinearLayout
-            android:id="@+id/buttonLayout"
+    <!-- RecyclerView for Messages -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/historyRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:layout_marginTop="16dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"/>
+
+    <!-- Bottom Bar -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#FFFFFF"
+        android:elevation="4dp"
+        android:padding="8dp"
+        app:layout_dodgeInsetEdges="bottom"
+        android:layout_gravity="bottom">
+
+        <!-- Text Input -->
+        <EditText
+            android:id="@+id/textQueryInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:background="#FFFFFF"
-            android:elevation="4dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_margin="16dp"
-            android:layout_marginBottom="72dp"
-            android:padding="8dp">
+            android:layout_weight="2"
+            android:hint="Type a message..."
+            android:textSize="16sp"
+            android:background="@drawable/whatsapp_input_background"
+            android:padding="8dp"
+            android:layout_marginEnd="8dp"/>
 
-            <Button
-                android:id="@+id/clearButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Clear"
-                android:textColor="#FFFFFF"
-                android:backgroundTint="#F44336"
-                android:padding="8dp"
-                android:layout_marginEnd="8dp"
-                android:elevation="2dp"/>
+        <!-- Send Button -->
+        <ImageButton
+            android:id="@+id/sendButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_send"
+            android:contentDescription="Send"
+            android:background="@android:color/transparent"
+            android:tint="@color/whatsapp_green"
+            android:layout_marginEnd="8dp"/>
 
-            <Button
-                android:id="@+id/repeatButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Repeat"
-                android:textColor="#FFFFFF"
-                android:backgroundTint="#4CAF50"
-                android:padding="8dp"
-                android:layout_marginEnd="8dp"
-                android:elevation="2dp"/>
-        </LinearLayout>
+        <!-- Clear Button -->
+        <Button
+            android:id="@+id/clearButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Clear"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#F44336"
+            android:layout_marginEnd="8dp"/>
 
-        <!-- Floating Action Button for Push to Talk -->
+        <!-- Repeat Button -->
+        <Button
+            android:id="@+id/repeatButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Repeat"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#4CAF50"
+            android:layout_marginEnd="8dp"/>
+
+        <!-- FAB for Voice -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/pushToTalkFab"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_mic"
             android:contentDescription="Push to Talk"
-            app:backgroundTint="#2196F3"
+            app:backgroundTint="@color/whatsapp_green"
             app:tint="#FFFFFF"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_margin="16dp"
-            android:elevation="6dp"/>
+            android:layout_gravity="center_vertical"/>
+    </LinearLayout>
 
-        <!-- ProgressBar for API calls -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <!-- Navigation Drawer -->
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/nav_view"
+    <!-- ProgressBar for API calls -->
+    <ProgressBar
+        android:id="@+id/progressBar"
         android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:layout_gravity="start"
-        app:menu="@menu/nav_menu"/>
-</androidx.drawerlayout.widget.DrawerLayout>
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:layout_gravity="center"/>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

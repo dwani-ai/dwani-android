@@ -1,6 +1,9 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -168,7 +171,6 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.action_share -> {
-                // Share the last message if available
                 if (messageList.isNotEmpty()) {
                     shareMessage(messageList.last())
                 } else {
@@ -218,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         if (position < 0 || position >= messageList.size) return
 
         val message = messageList[position]
-        val options = arrayOf("Delete", "Share")
+        val options = arrayOf("Delete", "Share", "Copy")
         AlertDialog.Builder(this)
             .setTitle("Message Options")
             .setItems(options) { _, which ->
@@ -230,6 +232,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     1 -> { // Share
                         shareMessage(message)
+                    }
+                    2 -> { // Copy
+                        copyMessage(message)
                     }
                 }
             }
@@ -244,6 +249,14 @@ class MainActivity : AppCompatActivity() {
             putExtra(Intent.EXTRA_TEXT, shareText)
         }
         startActivity(Intent.createChooser(shareIntent, "Share Message"))
+    }
+
+    private fun copyMessage(message: Message) {
+        val copyText = "${message.text}\n[${message.timestamp}]"
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Message", copyText)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
     private fun startRecording() {

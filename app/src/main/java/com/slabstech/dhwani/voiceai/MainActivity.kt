@@ -67,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val RETRY_DELAY_MS = 2000L
+    private val MIN_RECORDING_DURATION_MS = 1000L // Minimum duration: 1 second
+    private var recordingStartTime: Long = 0L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
@@ -280,6 +282,7 @@ class MainActivity : AppCompatActivity() {
         val recordedData = mutableListOf<Byte>()
 
         isRecording = true
+        recordingStartTime = System.currentTimeMillis() // Record start time
         audioRecord?.startRecording()
 
         Thread {
@@ -303,9 +306,17 @@ class MainActivity : AppCompatActivity() {
                 audioRecord?.stop()
                 audioRecord?.release()
                 audioRecord = null
-                writeWavFile(recordedData.toByteArray())
-                if (audioFile != null && audioFile!!.exists()) {
-                    sendAudioToApi(audioFile)
+                val duration = System.currentTimeMillis() - recordingStartTime
+                if (duration >= MIN_RECORDING_DURATION_MS) {
+                    writeWavFile(recordedData.toByteArray())
+                    if (audioFile != null && audioFile!!.exists()) {
+                        sendAudioToApi(audioFile)
+                    }
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, "Recording too short, try again", Toast.LENGTH_SHORT).show()
+                    }
+                    audioFile?.delete() // Clean up the file if it was created
                 }
             }
         }.start()

@@ -28,6 +28,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
+import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -90,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
 
         messageAdapter = MessageAdapter(messageList) { position ->
-            showDeleteConfirmationDialog(position)
+            showMessageOptionsDialog(position)
         }
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -166,6 +167,15 @@ class MainActivity : AppCompatActivity() {
                     ?: Toast.makeText(this, "No previous query to repeat", Toast.LENGTH_SHORT).show()
                 true
             }
+            R.id.action_share -> {
+                // Share the last message if available
+                if (messageList.isNotEmpty()) {
+                    shareMessage(messageList.last())
+                } else {
+                    Toast.makeText(this, "No messages to share", Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -204,19 +214,36 @@ class MainActivity : AppCompatActivity() {
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
-    private fun showDeleteConfirmationDialog(position: Int) {
+    private fun showMessageOptionsDialog(position: Int) {
+        if (position < 0 || position >= messageList.size) return
+
+        val message = messageList[position]
+        val options = arrayOf("Delete", "Share")
         AlertDialog.Builder(this)
-            .setTitle("Delete Message")
-            .setMessage("Are you sure you want to delete this message?")
-            .setPositiveButton("Yes") { _, _ ->
-                if (position >= 0 && position < messageList.size) {
-                    messageList.removeAt(position)
-                    messageAdapter.notifyItemRemoved(position)
-                    messageAdapter.notifyItemRangeChanged(position, messageList.size)
+            .setTitle("Message Options")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> { // Delete
+                        messageList.removeAt(position)
+                        messageAdapter.notifyItemRemoved(position)
+                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                    }
+                    1 -> { // Share
+                        shareMessage(message)
+                    }
                 }
             }
-            .setNegativeButton("No", null)
+            .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun shareMessage(message: Message) {
+        val shareText = "${message.text}\n[${message.timestamp}]"
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Share Message"))
     }
 
     private fun startRecording() {
@@ -498,7 +525,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-data class Message(val text: String, val timestamp: String, val isQuery: Boolean) // Added timestamp field
+data class Message(val text: String, val timestamp: String, val isQuery: Boolean)
 
 class MessageAdapter(
     private val messages: MutableList<Message>,
@@ -508,6 +535,7 @@ class MessageAdapter(
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
         val timestampText: TextView = itemView.findViewById(R.id.timestampText)
+        val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -519,8 +547,15 @@ class MessageAdapter(
         val message = messages[position]
         holder.messageText.text = message.text
         holder.timestampText.text = message.timestamp
-        holder.messageText.gravity = if (message.isQuery) android.view.Gravity.START else android.view.Gravity.END
-        holder.messageText.isActivated = message.isQuery
+
+        // Align queries (isQuery = true) to the right, answers to the left
+        val layoutParams = holder.messageContainer.layoutParams as LinearLayout.LayoutParams
+        layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
+        holder.messageContainer.layoutParams = layoutParams
+
+        // Set bubble color: green for queries (right), white for answers (left)
+        holder.messageContainer.isActivated = !message.isQuery // White for answers, green for queries
+
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
 

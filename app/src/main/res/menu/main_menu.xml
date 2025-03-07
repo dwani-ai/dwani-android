@@ -19,4 +19,8 @@
         android:id="@+id/action_repeat"
         android:title="Repeat"
         app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_share"
+        android:title="Share"
+        app:showAsAction="never"/>
 </menu>

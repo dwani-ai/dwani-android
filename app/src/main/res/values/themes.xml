@@ -1,9 +1,23 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.DhwaniVoiceAI" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+<resources>
+    <!-- Base application theme (Light) -->
+    <style name="Theme.DhwaniVoiceAI.Light" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorPrimaryVariant">#1976D2</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#4CAF50</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="android:statusBarColor">#1976D2</item>
+        <item name="android:windowBackground">#F5F5F5</item>
     </style>
 
-    <style name="Theme.DhwaniVoiceAI" parent="Base.Theme.DhwaniVoiceAI" />
+    <!-- Dark theme -->
+    <style name="Theme.DhwaniVoiceAI.Dark" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorPrimaryVariant">#1976D2</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#4CAF50</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="android:statusBarColor">#121212</item>
+        <item name="android:windowBackground">#212121</item>
+    </style>
 </resources>

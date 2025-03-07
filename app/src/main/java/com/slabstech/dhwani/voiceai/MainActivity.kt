@@ -1,17 +1,32 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
-import android.widget.Button
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.animation.AnimationUtils
+import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import androidx.drawerlayout.widget.DrawerLayout
+import androidx.appcompat.app.ActionBarDrawerToggle
+import com.google.android.material.navigation.NavigationView
+import android.view.MenuItem
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import androidx.core.content.ContextCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -25,31 +40,102 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
-    private lateinit var transcriptionText: TextView
-    private lateinit var transcriptionScrollView: ScrollView
-    private lateinit var responseText: TextView
-    private lateinit var responseScrollView: ScrollView
+    private lateinit var historyRecyclerView: RecyclerView
+    private lateinit var audioLevelBar: ProgressBar
+    private lateinit var progressBar: ProgressBar
+    private lateinit var pushToTalkFab: FloatingActionButton
+    private lateinit var clearButton: Button
+    private lateinit var repeatButton: Button
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var navView: NavigationView
     private var isRecording = false
     private val SAMPLE_RATE = 16000 // 16 kHz
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+    private val RETRY_DELAY_MS = 2000L // 2 seconds delay between retries
+    private val messageList = mutableListOf<Message>()
+    private lateinit var messageAdapter: MessageAdapter
+    private var lastTranscription: String? = null
+    private var currentTheme: Boolean? = null
+
+    // Flag to disable onboarding
+    private val DISABLE_ONBOARDING = true // Set to true to disable, false to enable
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme == null || currentTheme != isDarkTheme) {
+            setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
+            currentTheme = isDarkTheme
+        }
+
+        // Check if onboarding should be shown (only if DISABLE_ONBOARDING is false)
+        if (!DISABLE_ONBOARDING) {
+            val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
+            Log.d("MainActivity", "isFirstLaunch: $isFirstLaunch")
+            if (isFirstLaunch) {
+                startActivity(Intent(this, OnboardingActivity::class.java))
+                finish()
+                return
+            }
+        }
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val pushToTalkButton = findViewById<Button>(R.id.pushToTalkButton)
-        transcriptionText = findViewById(R.id.transcriptionText)
-        transcriptionScrollView = findViewById(R.id.transcriptionScrollView)
-        responseText = findViewById(R.id.responseText)
-        responseScrollView = findViewById(R.id.responseScrollView)
+        historyRecyclerView = findViewById(R.id.historyRecyclerView)
+        audioLevelBar = findViewById(R.id.audioLevelBar)
+        progressBar = findViewById(R.id.progressBar)
+        pushToTalkFab = findViewById(R.id.pushToTalkFab)
+        clearButton = findViewById(R.id.clearButton)
+        repeatButton = findViewById(R.id.repeatButton)
+        drawerLayout = findViewById(R.id.drawer_layout)
+        navView = findViewById(R.id.nav_view)
+
+        // Setup RecyclerView
+        messageAdapter = MessageAdapter(messageList) { position ->
+            showDeleteConfirmationDialog(position)
+        }
+        historyRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = messageAdapter
+        }
+
+        // Setup Toolbar and Drawer Toggle
+        setSupportActionBar(findViewById(androidx.appcompat.R.id.action_bar))
+        val toggle = ActionBarDrawerToggle(
+            this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close
+        )
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        // Navigation Drawer Menu Handling
+        navView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    drawerLayout.closeDrawers()
+                    true
+                }
+                R.id.nav_auto_scroll -> {
+                    menuItem.isChecked = !menuItem.isChecked
+                    drawerLayout.closeDrawers()
+                    true
+                }
+                else -> false
+            }
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
@@ -60,18 +146,91 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        pushToTalkButton.setOnTouchListener { _, event ->
+        pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
+                MotionEvent.ACTION_DOWN -> {
                     startRecording()
-                    pushToTalkButton.text = "Recording..."
+                    animateFabRecordingStart()
+                    true
                 }
-                android.view.MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP -> {
                     stopRecording()
-                    pushToTalkButton.text = "Push to Talk"
+                    animateFabRecordingStop()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        clearButton.setOnClickListener {
+            messageList.clear()
+            lastTranscription = null
+            messageAdapter.notifyDataSetChanged()
+        }
+
+        repeatButton.setOnClickListener {
+            lastTranscription?.let { getChatResponse(it) }
+                ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun animateFabRecordingStart() {
+        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
+        )
+        scaleUp.duration = 200
+        scaleUp.start()
+
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+    }
+
+    private fun animateFabRecordingStop() {
+        pushToTalkFab.setImageResource(R.drawable.ic_mic)
+        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
+        )
+        scaleDown.duration = 200
+        scaleDown.start()
+
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.fab_blue)
+    }
+
+    private fun showDeleteConfirmationDialog(position: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Message")
+            .setMessage("Are you sure you want to delete this message?")
+            .setPositiveButton("Yes") { _, _ ->
+                if (position >= 0 && position < messageList.size) {
+                    messageList.removeAt(position)
+                    messageAdapter.notifyItemRemoved(position)
+                    messageAdapter.notifyItemRangeChanged(position, messageList.size)
                 }
             }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return if (item.itemId == android.R.id.home) {
+            drawerLayout.openDrawer(androidx.core.view.GravityCompat.START)
             true
+        } else {
+            super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
         }
     }
 
@@ -104,6 +263,10 @@ class MainActivity : AppCompatActivity() {
                     val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                     if (bytesRead > 0) {
                         recordedData.addAll(audioBuffer.take(bytesRead))
+                        val rms = calculateRMS(audioBuffer, bytesRead)
+                        runOnUiThread {
+                            audioLevelBar.progress = (rms * 100).toInt().coerceIn(0, 100)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -123,6 +286,16 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun calculateRMS(buffer: ByteArray, bytesRead: Int): Float {
+        var sum = 0L
+        for (i in 0 until bytesRead step 2) {
+            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+            sum += sample * sample
+        }
+        val meanSquare = sum / (bytesRead / 2)
+        return (Math.sqrt(meanSquare.toDouble()) / 32768.0).toFloat()
+    }
+
     private fun stopRecording() {
         isRecording = false
     }
@@ -133,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                 FileOutputStream(file).use { fos ->
                     val totalAudioLen = pcmData.size
                     val totalDataLen = totalAudioLen + 36
-                    val channels = 1 // Mono
+                    val channels = 1
                     val sampleRate = SAMPLE_RATE
                     val bitsPerSample = 16
                     val byteRate = sampleRate * channels * bitsPerSample / 8
@@ -169,11 +342,17 @@ class MainActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File?) {
         if (audioFile == null) return
 
-        // Configure OkHttpClient with longer timeouts
+        runOnUiThread { progressBar.visibility = View.VISIBLE }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val language = prefs.getString("language", "kannada") ?: "kannada"
+        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+
         val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // Wait up to 30s to connect
-            .readTimeout(30, TimeUnit.SECONDS)    // Wait up to 30s for response
-            .writeTimeout(30, TimeUnit.SECONDS)   // Wait up to 30s to send data
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
         val requestBody = MultipartBody.Builder()
@@ -185,89 +364,127 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         val request = Request.Builder()
-            .url("https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/?language=kannada")
+            .url("$transcriptionApiEndpoint?language=$language")
             .header("accept", "application/json")
             .post(requestBody)
             .build()
 
         Thread {
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string()
-                    responseBody?.let {
-                        val json = JSONObject(it)
-                        val transcribedText = json.getString("text")
+            var attempts = 0
+            var success = false
+            var responseBody: String? = null
+
+            while (attempts < maxRetries && !success) {
+                try {
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        responseBody = response.body?.string()
+                        success = true
+                    } else {
+                        attempts++
+                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            val currentTranscription = transcriptionText.text.toString()
-                            transcriptionText.text = if (currentTranscription == "Transcription will appear here") {
-                                transcribedText
-                            } else {
-                                "$currentTranscription\n$transcribedText"
-                            }
-                            transcriptionScrollView.post { transcriptionScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
-                        getChatResponse(transcribedText)
                     }
-                } else {
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    attempts++
+                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Transcription API failed: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
+            }
+
+            responseBody?.let {
+                val json = JSONObject(it)
+                val transcribedText = json.getString("text")
+                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                lastTranscription = transcribedText
+                val message = Message("Transcription [$timestamp]: $transcribedText", true)
                 runOnUiThread {
-                    Toast.makeText(this, "Network error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
+                        historyRecyclerView.scrollToPosition(messageList.size - 1)
+                    }
+                    progressBar.visibility = View.GONE
                 }
+                getChatResponse(transcribedText)
+            } ?: runOnUiThread {
+                Toast.makeText(this, "Transcription failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                progressBar.visibility = View.GONE
             }
         }.start()
     }
 
     private fun getChatResponse(prompt: String) {
-        // Configure OkHttpClient with longer timeouts
+        runOnUiThread { progressBar.visibility = View.VISIBLE }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+
         val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // Wait up to 30s to connect
-            .readTimeout(30, TimeUnit.SECONDS)    // Wait up to 30s for response
-            .writeTimeout(30, TimeUnit.SECONDS)   // Wait up to 30s to send data
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().put("prompt", prompt).toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
-            .url("https://gaganyatri-llm-indic-server-cpu.hf.space/chat")
+            .url(chatApiEndpoint)
             .header("accept", "application/json")
             .post(requestBody)
             .build()
 
         Thread {
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string()
-                    responseBody?.let {
-                        val json = JSONObject(it)
-                        val chatResponse = json.getString("response")
+            var attempts = 0
+            var success = false
+            var responseBody: String? = null
+
+            while (attempts < maxRetries && !success) {
+                try {
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        responseBody = response.body?.string()
+                        success = true
+                    } else {
+                        attempts++
+                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            val currentResponse = responseText.text.toString()
-                            responseText.text = if (currentResponse == "Responses will appear here") {
-                                chatResponse
-                            } else {
-                                "$currentResponse\n$chatResponse"
-                            }
-                            responseScrollView.post { responseScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } else {
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    attempts++
+                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                     runOnUiThread {
-                        Toast.makeText(this, "Chat API failed: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
+            }
+
+            responseBody?.let {
+                val json = JSONObject(it)
+                val chatResponse = json.getString("response")
+                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                val message = Message("Response [$timestamp]: $chatResponse", false)
                 runOnUiThread {
-                    Toast.makeText(this, "Network error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    if (navView.menu.findItem(R.id.nav_auto_scroll).isChecked) {
+                        historyRecyclerView.scrollToPosition(messageList.size - 1)
+                    }
+                    progressBar.visibility = View.GONE
                 }
+            } ?: runOnUiThread {
+                Toast.makeText(this, "Chat failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                progressBar.visibility = View.GONE
             }
         }.start()
     }
@@ -292,4 +509,39 @@ class MainActivity : AppCompatActivity() {
         audioRecord?.release()
         audioRecord = null
     }
+}
+
+data class Message(val text: String, val isTranscription: Boolean)
+
+class MessageAdapter(
+    private val messages: MutableList<Message>,
+    private val onLongClick: (Int) -> Unit
+) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
+
+    class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val messageText: TextView = itemView.findViewById(R.id.messageText)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
+        return MessageViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
+        val message = messages[position]
+        holder.messageText.text = message.text
+        holder.messageText.setTextColor(
+            if (message.isTranscription) 0xFF2196F3.toInt() else 0xFF4CAF50.toInt()
+        )
+        holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
+        val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+        holder.itemView.startAnimation(animation)
+
+        holder.itemView.setOnLongClickListener {
+            onLongClick(position)
+            true
+        }
+    }
+
+    override fun getItemCount(): Int = messages.size
 }

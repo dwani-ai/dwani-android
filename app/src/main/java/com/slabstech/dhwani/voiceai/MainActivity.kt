@@ -55,8 +55,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioLevelBar: android.widget.ProgressBar
     private lateinit var progressBar: android.widget.ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
-    private lateinit var clearButton: android.widget.Button
-    private lateinit var repeatButton: android.widget.Button
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
@@ -67,7 +65,7 @@ class MainActivity : AppCompatActivity() {
     private val RETRY_DELAY_MS = 2000L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private var lastTranscription: String? = null
+    private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,8 +83,6 @@ class MainActivity : AppCompatActivity() {
         audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
         pushToTalkFab = findViewById(R.id.pushToTalkFab)
-        clearButton = findViewById(R.id.clearButton)
-        repeatButton = findViewById(R.id.repeatButton)
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
@@ -126,29 +122,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        clearButton.setOnClickListener {
-            messageList.clear()
-            lastTranscription = null
-            messageAdapter.notifyDataSetChanged()
-        }
-
-        repeatButton.setOnClickListener {
-            lastTranscription?.let { getChatResponse(it) }
-                ?: Toast.makeText(this, "No previous transcription to repeat", Toast.LENGTH_SHORT).show()
-        }
-
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
-                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                val message = Message("Query [$timestamp]: $query", true)
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Query: $query", timestamp, true)
                 messageList.add(message)
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
                     historyRecyclerView.scrollToPosition(messageList.size - 1)
                 }
                 getChatResponse(query)
-                textQueryInput.text.clear() // Clear input after sending
+                textQueryInput.text.clear()
             } else {
                 Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
             }
@@ -168,6 +153,17 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.action_auto_scroll -> {
                 item.isChecked = !item.isChecked
+                true
+            }
+            R.id.action_clear -> {
+                messageList.clear()
+                lastQuery = null
+                messageAdapter.notifyDataSetChanged()
+                true
+            }
+            R.id.action_repeat -> {
+                lastQuery?.let { getChatResponse(it) }
+                    ?: Toast.makeText(this, "No previous query to repeat", Toast.LENGTH_SHORT).show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -388,10 +384,10 @@ class MainActivity : AppCompatActivity() {
 
             responseBody?.let {
                 val json = JSONObject(it)
-                val transcribedText = json.getString("text")
-                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                lastTranscription = transcribedText
-                val message = Message("Transcription [$timestamp]: $transcribedText", true)
+                val voiceQueryText = json.getString("text")
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                lastQuery = voiceQueryText
+                val message = Message("Voice Query: $voiceQueryText", timestamp, true)
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
@@ -400,9 +396,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     progressBar.visibility = View.GONE
                 }
-                getChatResponse(transcribedText)
+                getChatResponse(voiceQueryText)
             } ?: runOnUiThread {
-                Toast.makeText(this, "Transcription failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
@@ -462,9 +458,9 @@ class MainActivity : AppCompatActivity() {
 
             responseBody?.let {
                 val json = JSONObject(it)
-                val chatResponse = json.getString("response")
-                val timestamp = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                val message = Message("Response [$timestamp]: $chatResponse", false)
+                val answerText = json.getString("response")
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Answer: $answerText", timestamp, false)
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
@@ -474,7 +470,7 @@ class MainActivity : AppCompatActivity() {
                     progressBar.visibility = View.GONE
                 }
             } ?: runOnUiThread {
-                Toast.makeText(this, "Chat failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
@@ -502,7 +498,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-data class Message(val text: String, val isTranscription: Boolean)
+data class Message(val text: String, val timestamp: String, val isQuery: Boolean) // Added timestamp field
 
 class MessageAdapter(
     private val messages: MutableList<Message>,
@@ -511,6 +507,7 @@ class MessageAdapter(
 
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
+        val timestampText: TextView = itemView.findViewById(R.id.timestampText)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -521,8 +518,9 @@ class MessageAdapter(
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
         val message = messages[position]
         holder.messageText.text = message.text
-        holder.messageText.gravity = if (message.isTranscription) android.view.Gravity.START else android.view.Gravity.END
-        holder.messageText.isActivated = message.isTranscription
+        holder.timestampText.text = message.timestamp
+        holder.messageText.gravity = if (message.isQuery) android.view.Gravity.START else android.view.Gravity.END
+        holder.messageText.isActivated = message.isQuery
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
 

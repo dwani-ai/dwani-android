@@ -6,15 +6,30 @@
     android:orientation="horizontal"
     android:padding="4dp">
 
-    <TextView
-        android:id="@+id/messageText"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:orientation="vertical"
         android:maxWidth="280dp"
-        android:textSize="16sp"
-        android:padding="8dp"
-        android:textColor="#212121"
         android:background="@drawable/whatsapp_message_bubble"
-        android:layout_margin="2dp"/>
+        android:padding="8dp"
+        android:layout_margin="2dp">
+
+        <TextView
+            android:id="@+id/messageText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="#212121"/>
+
+        <TextView
+            android:id="@+id/timestampText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#757575"
+            android:layout_gravity="end"
+            android:layout_marginTop="2dp"/>
+    </LinearLayout>
 
 </LinearLayout>

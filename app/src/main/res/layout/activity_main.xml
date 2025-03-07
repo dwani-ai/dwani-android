@@ -65,7 +65,7 @@
             android:id="@+id/textQueryInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="2"
+            android:layout_weight="1"
             android:hint="Type a message..."
             android:textSize="16sp"
             android:background="@drawable/whatsapp_input_background"
@@ -81,28 +81,6 @@
             android:contentDescription="Send"
             android:background="@android:color/transparent"
             android:tint="@color/whatsapp_green"
-            android:layout_marginEnd="8dp"/>
-
-        <!-- Clear Button -->
-        <Button
-            android:id="@+id/clearButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Clear"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#F44336"
-            android:layout_marginEnd="8dp"/>
-
-        <!-- Repeat Button -->
-        <Button
-            android:id="@+id/repeatButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Repeat"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#4CAF50"
             android:layout_marginEnd="8dp"/>
 
         <!-- FAB for Voice -->

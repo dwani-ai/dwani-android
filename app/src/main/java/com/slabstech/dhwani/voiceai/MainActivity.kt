@@ -22,6 +22,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -32,7 +33,6 @@ import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.widget.LinearLayout
-import androidx.core.content.ContextCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -282,7 +282,7 @@ class MainActivity : AppCompatActivity() {
         val recordedData = mutableListOf<Byte>()
 
         isRecording = true
-        recordingStartTime = System.currentTimeMillis() // Record start time
+        recordingStartTime = System.currentTimeMillis()
         audioRecord?.startRecording()
 
         Thread {
@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         Toast.makeText(this, "Recording too short, try again", Toast.LENGTH_SHORT).show()
                     }
-                    audioFile?.delete() // Clean up the file if it was created
+                    audioFile?.delete()
                 }
             }
         }.start()
@@ -433,24 +433,40 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            responseBody?.let {
-                val json = JSONObject(it)
-                val voiceQueryText = json.getString("text")
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                lastQuery = voiceQueryText
-                val message = Message("Voice Query: $voiceQueryText", timestamp, true)
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
-                        historyRecyclerView.scrollToPosition(messageList.size - 1)
+            if (success && responseBody != null) {
+                try {
+                    val json = JSONObject(responseBody)
+                    val voiceQueryText = json.optString("text", "")
+                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    if (voiceQueryText.isNotEmpty() && !json.has("error")) {
+                        lastQuery = voiceQueryText
+                        val message = Message("Voice Query: $voiceQueryText", timestamp, true)
+                        runOnUiThread {
+                            messageList.add(message)
+                            messageAdapter.notifyItemInserted(messageList.size - 1)
+                            if (toolbar.menu.findItem(R.id.action_auto_scroll).isChecked) {
+                                historyRecyclerView.scrollToPosition(messageList.size - 1)
+                            }
+                            progressBar.visibility = View.GONE
+                        }
+                        getChatResponse(voiceQueryText)
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
+                            progressBar.visibility = View.GONE
+                        }
                     }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Failed to parse transcription: ${e.message}", Toast.LENGTH_SHORT).show()
+                        progressBar.visibility = View.GONE
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                     progressBar.visibility = View.GONE
                 }
-                getChatResponse(voiceQueryText)
-            } ?: runOnUiThread {
-                Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
-                progressBar.visibility = View.GONE
             }
         }.start()
     }

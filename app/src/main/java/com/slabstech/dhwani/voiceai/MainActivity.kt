@@ -99,9 +99,11 @@ class MainActivity : AppCompatActivity() {
 
         setSupportActionBar(toolbar)
 
-        messageAdapter = MessageAdapter(messageList) { position ->
+        messageAdapter = MessageAdapter(messageList, { position ->
             showMessageOptionsDialog(position)
-        }
+        }, { message, button ->
+            toggleAudioPlayback(message, button)
+        })
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
@@ -483,7 +485,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
-        val chatApiKey = "your-new-secret-api-key" // Hardcoded for testing
+        val chatApiKey = "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -541,8 +543,7 @@ class MainActivity : AppCompatActivity() {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
-                    // Call TTS after displaying the response
-                    textToSpeech(answerText)
+                    textToSpeech(answerText, message) // Pass message to store audio file
                 }
             } ?: runOnUiThread {
                 Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
@@ -551,7 +552,11 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun textToSpeech(text: String) {
+    private fun textToSpeech(text: String, message: Message) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean("tts_enabled", true)) return
+
+        val voice = prefs.getString("tts_voice", "kannada-female") ?: "kannada-female"
         val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
         val apiKey = "your-new-secret-api-key"
 
@@ -564,7 +569,7 @@ class MainActivity : AppCompatActivity() {
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().apply {
             put("input", text)
-            put("voice", "kannada-female")
+            put("voice", voice)
             put("model", "ai4bharat/indic-parler-tts")
             put("response_format", "mp3")
             put("speed", 1.0)
@@ -577,41 +582,59 @@ class MainActivity : AppCompatActivity() {
             .post(requestBody)
             .build()
 
+        runOnUiThread { ttsProgressBar.visibility = View.VISIBLE }
+
         Thread {
             try {
-                runOnUiThread { ttsProgressBar.visibility = View.VISIBLE } // Before API call
-
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val audioBytes = response.body?.bytes()
                     runOnUiThread {
                         if (audioBytes != null && audioBytes.isNotEmpty()) {
-                            val audioFile = File(cacheDir, "temp_tts_audio.mp3")
+                            val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
                             FileOutputStream(audioFile).use { fos ->
                                 fos.write(audioBytes)
                             }
                             if (audioFile.exists() && audioFile.length() > 0) {
-                                Toast.makeText(this, "Audio file created: ${audioFile.length()} bytes", Toast.LENGTH_SHORT).show()
+                                message.audioFile = audioFile
+                                ttsProgressBar.visibility = View.GONE
                                 playAudio(audioFile)
                             } else {
+                                ttsProgressBar.visibility = View.GONE
                                 Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
                             }
                         } else {
+                            ttsProgressBar.visibility = View.GONE
                             Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } else {
                     runOnUiThread {
+                        ttsProgressBar.visibility = View.GONE
                         Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
                     }
                 }
-                runOnUiThread { ttsProgressBar.visibility = View.GONE }
             } catch (e: IOException) {
                 runOnUiThread {
+                    ttsProgressBar.visibility = View.GONE
                     Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        message.audioFile?.let { audioFile ->
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                button.setImageResource(android.R.drawable.ic_media_play)
+            } else {
+                playAudio(audioFile)
+                button.setImageResource(R.drawable.ic_media_stop) // Custom drawable
+            }
+        }
     }
 
     private fun playAudio(audioFile: File) {
@@ -621,18 +644,24 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            mediaPlayer?.release() // Release any existing player
+            mediaPlayer?.release()
             mediaPlayer = MediaPlayer()
             mediaPlayer?.apply {
                 setDataSource(FileInputStream(audioFile).fd)
                 prepare()
-                Toast.makeText(this@MainActivity, "Starting audio playback", Toast.LENGTH_SHORT).show()
                 start()
+                val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
+                if (messageIndex != -1) {
+                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                    holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
+                }
                 setOnCompletionListener {
-                    Toast.makeText(this@MainActivity, "Audio playback completed", Toast.LENGTH_SHORT).show()
                     it.release()
                     mediaPlayer = null
-                    audioFile.delete()
+                    if (messageIndex != -1) {
+                        val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                        holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                    }
                 }
                 setOnErrorListener { mp, what, extra ->
                     runOnUiThread {
@@ -640,7 +669,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     mp.release()
                     mediaPlayer = null
-                    audioFile.delete()
+                    if (messageIndex != -1) {
+                        val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                        holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                    }
                     true
                 }
             }
@@ -650,7 +682,6 @@ class MainActivity : AppCompatActivity() {
             }
             mediaPlayer?.release()
             mediaPlayer = null
-            audioFile.delete()
         }
     }
 
@@ -673,20 +704,28 @@ class MainActivity : AppCompatActivity() {
         }
         audioRecord?.release()
         audioRecord = null
+        mediaPlayer?.release()
+        mediaPlayer = null
+        messageList.forEach { it.audioFile?.delete() }
     }
-}
 
-data class Message(val text: String, val timestamp: String, val isQuery: Boolean)
-
+data class Message(
+    val text: String,
+    val timestamp: String,
+    val isQuery: Boolean,
+    var audioFile: File? = null
+)
 class MessageAdapter(
     private val messages: MutableList<Message>,
-    private val onLongClick: (Int) -> Unit
+    private val onLongClick: (Int) -> Unit,
+    private val onAudioControlClick: (Message, ImageButton) -> Unit
 ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
         val timestampText: TextView = itemView.findViewById(R.id.timestampText)
         val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
+        val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -699,13 +738,20 @@ class MessageAdapter(
         holder.messageText.text = message.text
         holder.timestampText.text = message.timestamp
 
-        // Align queries (isQuery = true) to the right, answers to the left
         val layoutParams = holder.messageContainer.layoutParams as LinearLayout.LayoutParams
         layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
         holder.messageContainer.layoutParams = layoutParams
 
-        // Set bubble color: green for queries (right), white for answers (left)
         holder.messageContainer.isActivated = !message.isQuery // White for answers, green for queries
+
+        if (!message.isQuery && message.audioFile != null) {
+            holder.audioControlButton.visibility = View.VISIBLE
+            holder.audioControlButton.setOnClickListener {
+                onAudioControlClick(message, holder.audioControlButton)
+            }
+        } else {
+            holder.audioControlButton.visibility = View.GONE
+        }
 
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
@@ -717,4 +763,4 @@ class MessageAdapter(
     }
 
     override fun getItemCount(): Int = messages.size
-}
+}}

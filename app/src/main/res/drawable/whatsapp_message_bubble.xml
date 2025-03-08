@@ -1,25 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_activated="true"> <!-- Answers (left, white) -->
-        <shape android:shape="rectangle">
-            <corners android:radius="12dp"/>
-            <solid android:color="@color/whatsapp_message_in"/> <!-- White -->
-            <padding
-                android:left="8dp"
-                android:top="4dp"
-                android:right="8dp"
-                android:bottom="4dp"/>
-        </shape>
-    </item>
-    <item> <!-- Queries (right, green) -->
-        <shape android:shape="rectangle">
-            <corners android:radius="12dp"/>
-            <solid android:color="@color/whatsapp_message_out"/> <!-- Green -->
-            <padding
-                android:left="8dp"
-                android:top="4dp"
-                android:right="8dp"
-                android:bottom="4dp"/>
-        </shape>
-    </item>
-</selector>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="12dp"/> <!-- WhatsApp-style rounded corners -->
+    <solid android:color="@android:color/transparent"/> <!-- Color set dynamically -->
+</shape>

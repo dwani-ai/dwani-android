@@ -860,18 +860,17 @@ class AnswerActivity : AppCompatActivity() {
                 layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
                 holder.messageContainer.layoutParams = layoutParams
 
-                // Set colors based on query or response
-                if (message.isQuery) {
-                    holder.messageText.background = ContextCompat.getDrawable(holder.itemView.context, R.drawable.message_background)?.apply {
-                        setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green)) // Green for queries
+                // Set WhatsApp-style colors directly
+                val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)
+                backgroundDrawable?.let {
+                    if (message.isQuery) {
+                        it.setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_message_out)) // #DCF8C6
+                    } else {
+                        it.setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_message_in)) // #FFFFFF
                     }
-                    holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.white))
-                } else {
-                    holder.messageText.background = ContextCompat.getDrawable(holder.itemView.context, R.drawable.message_background)?.apply {
-                        setTint(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray)) // Gray for responses
-                    }
-                    holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
+                    holder.messageText.background = it
                 }
+                holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
                 holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
 
                 if (!message.isQuery && message.audioFile != null) {
@@ -879,6 +878,7 @@ class AnswerActivity : AppCompatActivity() {
                     holder.audioControlButton.setOnClickListener {
                         onAudioControlClick(message, holder.audioControlButton)
                     }
+                    holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
                     android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
                 } else {
                     holder.audioControlButton.visibility = View.GONE

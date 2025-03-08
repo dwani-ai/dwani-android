@@ -41,7 +41,7 @@
                 android:id="@+id/audioControlButton"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:visibility="gone"
+                android:visibility="visible"
                 android:src="@android:drawable/ic_media_play"
                 android:background="@android:color/transparent"
                 android:tint="@color/whatsapp_green"

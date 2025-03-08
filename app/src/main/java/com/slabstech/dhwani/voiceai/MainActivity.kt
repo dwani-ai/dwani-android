@@ -598,6 +598,11 @@ class MainActivity : AppCompatActivity() {
                             if (audioFile.exists() && audioFile.length() > 0) {
                                 message.audioFile = audioFile
                                 ttsProgressBar.visibility = View.GONE
+                                val messageIndex = messageList.indexOf(message)
+                                if (messageIndex != -1) {
+                                    messageAdapter.notifyItemChanged(messageIndex) // Notify adapter to rebind
+                                    android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
+                                }
                                 playAudio(audioFile)
                             } else {
                                 ttsProgressBar.visibility = View.GONE
@@ -742,15 +747,17 @@ class MessageAdapter(
         layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
         holder.messageContainer.layoutParams = layoutParams
 
-        holder.messageContainer.isActivated = !message.isQuery // White for answers, green for queries
+        holder.messageContainer.isActivated = !message.isQuery
 
         if (!message.isQuery && message.audioFile != null) {
             holder.audioControlButton.visibility = View.VISIBLE
             holder.audioControlButton.setOnClickListener {
                 onAudioControlClick(message, holder.audioControlButton)
             }
+            android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
         } else {
             holder.audioControlButton.visibility = View.GONE
+            android.util.Log.d("MessageAdapter", "Hiding audio button for message: ${message.text}")
         }
 
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
@@ -763,4 +770,5 @@ class MessageAdapter(
     }
 
     override fun getItemCount(): Int = messages.size
-}}
+}
+}

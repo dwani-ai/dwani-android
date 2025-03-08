@@ -1,6 +1,8 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -11,28 +13,26 @@ import android.media.AudioRecord
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import androidx.appcompat.widget.Toolbar
-import android.view.Menu
-import android.view.MenuItem
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
-import android.widget.LinearLayout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -46,12 +46,11 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
-
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
@@ -95,20 +94,22 @@ class MainActivity : AppCompatActivity() {
 
         setSupportActionBar(toolbar)
 
-        messageAdapter = MessageAdapter(messageList) { position ->
-            showMessageOptionsDialog(position)
-        }
+        messageAdapter =
+            MessageAdapter(messageList) { position ->
+                showMessageOptionsDialog(position)
+            }
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
+                RECORD_AUDIO_PERMISSION_CODE,
             )
         }
 
@@ -196,11 +197,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun animateFabRecordingStart() {
         pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
-        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
-        )
+        val scaleUp =
+            ObjectAnimator.ofPropertyValuesHolder(
+                pushToTalkFab,
+                PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
+                PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f),
+            )
         scaleUp.duration = 200
         scaleUp.start()
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
@@ -208,11 +210,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun animateFabRecordingStop() {
         pushToTalkFab.setImageResource(R.drawable.ic_mic)
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
-        )
+        val scaleDown =
+            ObjectAnimator.ofPropertyValuesHolder(
+                pushToTalkFab,
+                PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
+                PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f),
+            )
         scaleDown.duration = 200
         scaleDown.start()
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
@@ -246,10 +249,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun shareMessage(message: Message) {
         val shareText = "${message.text}\n[${message.timestamp}]"
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, shareText)
-        }
+        val shareIntent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
         startActivity(Intent.createChooser(shareIntent, "Share Message"))
     }
 
@@ -263,19 +267,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun startRecording() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
             return
         }
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        audioRecord = AudioRecord(
-            AudioSource.MIC,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize
-        )
+        audioRecord =
+            AudioRecord(
+                AudioSource.MIC,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                bufferSize,
+            )
 
         audioFile = File(cacheDir, "temp_audio.wav")
         val audioBuffer = ByteArray(bufferSize)
@@ -322,7 +328,10 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun calculateRMS(buffer: ByteArray, bytesRead: Int): Float {
+    private fun calculateRMS(
+        buffer: ByteArray,
+        bytesRead: Int,
+    ): Float {
         var sum = 0L
         for (i in 0 until bytesRead step 2) {
             val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
@@ -383,27 +392,33 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint",
+            "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/")
+            ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
 
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        val client =
+            OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build()
 
-        val requestBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "file", audioFile.name,
-                audioFile.asRequestBody("audio/x-wav".toMediaType())
-            )
-            .build()
+        val requestBody =
+            MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "file",
+                    audioFile.name,
+                    audioFile.asRequestBody("audio/x-wav".toMediaType()),
+                )
+                .build()
 
-        val request = Request.Builder()
-            .url("$transcriptionApiEndpoint?language=$language")
-            .header("accept", "application/json")
-            .post(requestBody)
-            .build()
+        val request =
+            Request.Builder()
+                .url("$transcriptionApiEndpoint?language=$language")
+                .header("accept", "application/json")
+                .post(requestBody)
+                .build()
 
         Thread {
             var attempts = 0
@@ -420,7 +435,11 @@ class MainActivity : AppCompatActivity() {
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                this,
+                                "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         }
                     }
                 } catch (e: IOException) {
@@ -475,25 +494,31 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        val maxRetries = prefs.getString(
+                "max_retries", "3")?.toIntOrNull() ?: 3
+        val chatApiEndpoint = prefs.getString(
+            "chat_api_endpoint",
+            "https://gaganyatri-llm-indic-server-cpu.hf.space/chat")
+            ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
         val chatApiKey = "your-new-secret-api-key" // Hardcoded for testing
 
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        val client =
+            OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build()
 
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().put("prompt", prompt).toString().toRequestBody(jsonMediaType)
 
-        val request = Request.Builder()
-            .url(chatApiEndpoint)
-            .header("accept", "application/json")
-            .header("X-API-Key", chatApiKey)
-            .post(requestBody)
-            .build()
+        val request =
+            Request.Builder()
+                .url(chatApiEndpoint)
+                .header("accept", "application/json")
+                .header("X-API-Key", chatApiKey)
+                .post(requestBody)
+                .build()
 
         Thread {
             var attempts = 0
@@ -510,7 +535,11 @@ class MainActivity : AppCompatActivity() {
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                this,
+                                "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         }
                     }
                 } catch (e: IOException) {
@@ -546,11 +575,12 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
-        grantResults: IntArray
+        grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == RECORD_AUDIO_PERMISSION_CODE && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
             // Permission granted
         }
     }
@@ -569,21 +599,26 @@ data class Message(val text: String, val timestamp: String, val isQuery: Boolean
 
 class MessageAdapter(
     private val messages: MutableList<Message>,
-    private val onLongClick: (Int) -> Unit
+    private val onLongClick: (Int) -> Unit,
 ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
-
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
         val timestampText: TextView = itemView.findViewById(R.id.timestampText)
         val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): MessageViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
         return MessageViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: MessageViewHolder,
+        position: Int,
+    ) {
         val message = messages[position]
         holder.messageText.text = message.text
         holder.timestampText.text = message.timestamp

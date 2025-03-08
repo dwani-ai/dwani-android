@@ -28,7 +28,7 @@ android {
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
         debug {
@@ -85,8 +85,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
 
-
-
     implementation(libs.androidx.preference.ktx)
     implementation(libs.androidx.datastore.preferences)
 
@@ -98,7 +96,6 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.timber)
-
 }
 
 hilt {

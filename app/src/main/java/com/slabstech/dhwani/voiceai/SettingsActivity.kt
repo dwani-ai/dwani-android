@@ -16,7 +16,6 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class SettingsActivity : AppCompatActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -35,13 +34,17 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {
-        private val client = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .build()
+        private val client =
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build()
 
-        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        override fun onCreatePreferences(
+            savedInstanceState: Bundle?,
+            rootKey: String?,
+        ) {
             setPreferencesFromResource(R.xml.preferences, rootKey)
 
             // Validate Transcription API Endpoint
@@ -98,36 +101,42 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun testEndpoints() {
             val prefs = preferenceManager.sharedPreferences
-            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: ""
-            val chatUrl = prefs?.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: ""
-            val language = prefs?.getString("language", "kannada") ?: "kannada"
+            val transcriptionUrl =
+                prefs?.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: ""
+            val chatUrl =
+                prefs?.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: ""
+            val language =
+                prefs?.getString("language", "kannada") ?: "kannada"
 
             CoroutineScope(Dispatchers.Main).launch {
                 val transcriptionResult = testEndpoint("$transcriptionUrl?language=$language")
                 val chatResult = testEndpoint(chatUrl)
 
-                val message = buildString {
-                    append("Transcription API: ")
-                    append(if (transcriptionResult) "Success" else "Failed")
-                    append("\nChat API: ")
-                    append(if (chatResult) "Success" else "Failed")
-                }
+                val message =
+                    buildString {
+                        append("Transcription API: ")
+                        append(if (transcriptionResult) "Success" else "Failed")
+                        append("\nChat API: ")
+                        append(if (chatResult) "Success" else "Failed")
+                    }
                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
         }
 
-        private suspend fun testEndpoint(url: String): Boolean = withContext(Dispatchers.IO) {
-            try {
-                val request = Request.Builder()
-                    .url(url)
-                    .head()
-                    .build()
-                val response = client.newCall(request).execute()
-                response.isSuccessful
-            } catch (e: IOException) {
-                e.printStackTrace()
-                false
+        private suspend fun testEndpoint(url: String): Boolean =
+            withContext(Dispatchers.IO) {
+                try {
+                    val request =
+                        Request.Builder()
+                            .url(url)
+                            .head()
+                            .build()
+                    val response = client.newCall(request).execute()
+                    response.isSuccessful
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    false
+                }
             }
-        }
     }
 }

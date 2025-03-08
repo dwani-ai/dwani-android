@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
         ttsProgressBar = findViewById(R.id.ttsProgressBar)
+        val bottomSheetTrigger = findViewById<ImageButton>(R.id.bottomSheetTrigger)
 
         setSupportActionBar(toolbar)
 
@@ -114,6 +115,11 @@ class MainActivity : AppCompatActivity() {
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
+        }
+
+        bottomSheetTrigger.setOnClickListener {
+            val bottomSheet = BottomSheetMenuFragment()
+            bottomSheet.show(supportFragmentManager, bottomSheet.tag)
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)

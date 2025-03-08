@@ -82,6 +82,7 @@
             android:background="@android:color/transparent"
             android:tint="@color/whatsapp_green"
             android:layout_marginEnd="8dp"/>
+
         <ProgressBar
             android:id="@+id/ttsProgressBar"
             android:layout_width="24dp"
@@ -99,7 +100,18 @@
             android:contentDescription="Push to Talk"
             app:backgroundTint="@color/whatsapp_green"
             app:tint="#FFFFFF"
-            android:layout_gravity="center_vertical"/>
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="8dp"/>
+
+        <!-- Bottom Sheet Trigger -->
+        <ImageButton
+            android:id="@+id/bottomSheetTrigger"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@android:drawable/ic_menu_more"
+            android:contentDescription="More Options"
+            android:background="@android:color/transparent"
+            android:tint="@color/whatsapp_green"/>
     </LinearLayout>
 
     <!-- ProgressBar for API calls -->
@@ -109,5 +121,4 @@
         android:layout_height="wrap_content"
         android:visibility="gone"
         android:layout_gravity="center"/>
-
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -49,6 +49,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import android.media.MediaPlayer
+import java.io.FileInputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -471,6 +473,8 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private var mediaPlayer: MediaPlayer? = null
+
     private fun getChatResponse(prompt: String) {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
@@ -535,12 +539,114 @@ class MainActivity : AppCompatActivity() {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
+                    // Call TTS after displaying the response
+                    textToSpeech(answerText)
                 }
             } ?: runOnUiThread {
                 Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
+    }
+
+    private fun textToSpeech(text: String) {
+        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
+        val apiKey = "your-new-secret-api-key"
+
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        val jsonMediaType = "application/json".toMediaType()
+        val requestBody = JSONObject().apply {
+            put("input", text)
+            put("voice", "kannada-female")
+            put("model", "ai4bharat/indic-parler-tts")
+            put("response_format", "mp3")
+            put("speed", 1.0)
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url(ttsApiEndpoint)
+            .header("X-API-Key", apiKey)
+            .header("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+
+        Thread {
+            try {
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val audioBytes = response.body?.bytes()
+                    runOnUiThread {
+                        if (audioBytes != null && audioBytes.isNotEmpty()) {
+                            val audioFile = File(cacheDir, "temp_tts_audio.mp3")
+                            FileOutputStream(audioFile).use { fos ->
+                                fos.write(audioBytes)
+                            }
+                            if (audioFile.exists() && audioFile.length() > 0) {
+                                Toast.makeText(this, "Audio file created: ${audioFile.length()} bytes", Toast.LENGTH_SHORT).show()
+                                playAudio(audioFile)
+                            } else {
+                                Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun playAudio(audioFile: File) {
+        try {
+            if (!audioFile.exists()) {
+                Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            mediaPlayer?.release() // Release any existing player
+            mediaPlayer = MediaPlayer()
+            mediaPlayer?.apply {
+                setDataSource(FileInputStream(audioFile).fd)
+                prepare()
+                Toast.makeText(this@MainActivity, "Starting audio playback", Toast.LENGTH_SHORT).show()
+                start()
+                setOnCompletionListener {
+                    Toast.makeText(this@MainActivity, "Audio playback completed", Toast.LENGTH_SHORT).show()
+                    it.release()
+                    mediaPlayer = null
+                    audioFile.delete()
+                }
+                setOnErrorListener { mp, what, extra ->
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
+                    }
+                    mp.release()
+                    mediaPlayer = null
+                    audioFile.delete()
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(this, "Audio playback failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+            audioFile.delete()
+        }
     }
 
     override fun onRequestPermissionsResult(

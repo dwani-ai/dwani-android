@@ -47,11 +47,27 @@
         android:title="Test Endpoints"
         android:summary="Check if the API endpoints are reachable"/>
 
-    <ListPreference
-        android:key="tts_voice"
-        android:title="TTS Voice"
-        android:defaultValue="Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        android:entries="@array/tts_voice_options"
-        android:entryValues="@array/tts_voice_values"
-        android:summary="Select the voice for text-to-speech"/>
+    <PreferenceCategory android:title="Text-to-Speech Settings">
+        <SwitchPreferenceCompat
+            android:key="tts_enabled"
+            android:title="Enable TTS"
+            android:defaultValue="false"
+            android:summary="Turn text-to-speech on or off"/>
+
+        <SwitchPreferenceCompat
+            android:key="auto_play_tts"
+            android:title="Auto-Play TTS"
+            android:defaultValue="true"
+            android:summary="Automatically play TTS audio when enabled"
+            android:dependency="tts_enabled"/>
+
+        <ListPreference
+            android:key="tts_voice"
+            android:title="TTS Voice"
+            android:defaultValue="Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+            android:entries="@array/tts_voice_options"
+            android:entryValues="@array/tts_voice_values"
+            android:summary="Select the voice for text-to-speech"
+            android:dependency="tts_enabled"/>
+    </PreferenceCategory>
 </PreferenceScreen>

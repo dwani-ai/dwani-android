@@ -7,6 +7,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SwitchPreferenceCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,7 +68,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
-            // Validate Chat API Key (optional - ensure not empty)
+            // Validate Chat API Key
             findPreference<EditTextPreference>("chat_api_key")?.apply {
                 setOnPreferenceChangeListener { _, newValue ->
                     val isValid = newValue.toString().isNotEmpty()
@@ -86,6 +87,24 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
+            // Update TTS Enabled Summary
+            findPreference<SwitchPreferenceCompat>("tts_enabled")?.apply {
+                setOnPreferenceChangeListener { preference, newValue ->
+                    preference.summary = if (newValue as Boolean) "Text-to-speech is enabled" else "Text-to-speech is disabled"
+                    true
+                }
+                summary = if (isChecked) "Text-to-speech is enabled" else "Text-to-speech is disabled"
+            }
+
+            // Update Auto-Play TTS Summary
+            findPreference<SwitchPreferenceCompat>("auto_play_tts")?.apply {
+                setOnPreferenceChangeListener { preference, newValue ->
+                    preference.summary = if (newValue as Boolean) "TTS audio plays automatically" else "TTS audio requires manual play"
+                    true
+                }
+                summary = if (isChecked) "TTS audio plays automatically" else "TTS audio requires manual play"
+            }
+
             // Update TTS Voice Summary
             findPreference<ListPreference>("tts_voice")?.apply {
                 setOnPreferenceChangeListener { preference, newValue ->
@@ -95,14 +114,11 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     true
                 }
-                // Set initial summary
                 val initialIndex = entryValues.indexOf(value)
                 if (initialIndex >= 0) {
                     summary = entries[initialIndex]
                 }
             }
-
-
         }
 
         private fun validateUrl(url: String): Boolean {

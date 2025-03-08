@@ -103,11 +103,9 @@ class MainActivity : AppCompatActivity() {
         if (!prefs.contains(AUTO_PLAY_KEY)) {
             prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
         }
-
         if (!prefs.contains("tts_enabled")) {
-            prefs.edit().putBoolean("tts_enabled", false).apply() // Changed to false
+            prefs.edit().putBoolean("tts_enabled", false).apply()
         }
-
         messageAdapter = MessageAdapter(messageList, { position ->
             showMessageOptionsDialog(position)
         }, { message, button ->
@@ -195,24 +193,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 true
             }
-            R.id.action_auto_play -> {
-                item.isChecked = !item.isChecked
-                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-                prefs.edit().putBoolean(AUTO_PLAY_KEY, item.isChecked).apply()
-                Toast.makeText(this, "Auto-Play TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
-                true
-            }
-            R.id.action_tts_enabled -> {
-                item.isChecked = !item.isChecked
-                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-                prefs.edit().putBoolean("tts_enabled", item.isChecked).apply()
-                Toast.makeText(this, "TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
-                true
-            }
             else -> super.onOptionsItemSelected(item)
         }
     }
-
     override fun onResume() {
         super.onResume()
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -577,7 +560,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun textToSpeech(text: String, message: Message) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        if (!prefs.getBoolean("tts_enabled", true)) return
+        if (!prefs.getBoolean("tts_enabled", false)) return // Changed default to false
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
@@ -594,7 +577,7 @@ class MainActivity : AppCompatActivity() {
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().apply {
             put("input", text)
-            put("voice", voice) // Uses the full description (e.g., "Anu speaks...")
+            put("voice", voice)
             put("model", "ai4bharat/indic-parler-tts")
             put("response_format", "mp3")
             put("speed", 1.0)

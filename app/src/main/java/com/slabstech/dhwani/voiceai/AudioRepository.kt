@@ -20,6 +20,7 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -138,16 +139,34 @@ class AudioRepository(
                 fos.write(header.array())
                 fos.write(pcmData)
             }
+            Timber.d("WAV file written: ${file.absolutePath}, size: ${file.length()} bytes")
         } catch (e: IOException) {
             Timber.e(e, "Failed to write WAV file")
+            file.delete()
         }
     }
+
+    private suspend fun isNetworkAvailable(): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val address = InetAddress.getByName("8.8.8.8") // Google's DNS
+                address.isReachable(2000) // 2-second timeout
+            } catch (e: Exception) {
+                Timber.e(e, "Network check failed")
+                false
+            }
+        }
 
     suspend fun sendAudioToApi(audioFile: File?): Pair<String?, String?> =
         withContext(Dispatchers.IO) {
             if (audioFile == null || !audioFile.exists()) {
                 Timber.e("Audio file is null or does not exist")
                 return@withContext Pair(null, "Audio file not found")
+            }
+
+            if (!isNetworkAvailable()) {
+                Timber.e("No network available")
+                return@withContext Pair(null, "No network connection")
             }
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
@@ -193,7 +212,7 @@ class AudioRepository(
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                     }
-                    response.close() // Ensure resources are released
+                    response.close()
                 } catch (e: IOException) {
                     Timber.e(e, "API call failed on attempt $attempts: ${e.message}")
                     attempts++

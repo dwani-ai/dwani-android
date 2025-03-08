@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import org.koin.androidx.viewmodel.ext.android.viewModel
+import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,6 +90,7 @@ class MainActivity : AppCompatActivity() {
 
         // Observe recording state
         viewModel.isRecording.observe(this) { isRecording ->
+            Timber.d("isRecording changed: $isRecording")
             if (isRecording) {
                 animateFabRecordingStart()
             } else {
@@ -117,10 +119,12 @@ class MainActivity : AppCompatActivity() {
         pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    Timber.d("Push-to-talk started")
                     viewModel.startRecording()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    Timber.d("Push-to-talk stopped")
                     viewModel.stopRecording()
                     animateFabRecordingStop() // Ensure animation stops
                     true

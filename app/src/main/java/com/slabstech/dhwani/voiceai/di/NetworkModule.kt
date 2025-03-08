@@ -12,11 +12,11 @@ val appModule =
     module {
         single {
             OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(60, TimeUnit.SECONDS) // Increased from 30s
+                .readTimeout(60, TimeUnit.SECONDS) // Increased from 30s
+                .writeTimeout(60, TimeUnit.SECONDS) // Increased from 30s
                 .build()
         }
         single { AudioRepository(androidContext(), get()) }
-        viewModel { MainViewModel(get()) } // Injects OkHttpClient into MainViewModel
+        viewModel { MainViewModel(get()) }
     }

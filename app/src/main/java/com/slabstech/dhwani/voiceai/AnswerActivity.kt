@@ -860,7 +860,19 @@ class AnswerActivity : AppCompatActivity() {
                 layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
                 holder.messageContainer.layoutParams = layoutParams
 
-                holder.messageContainer.isActivated = !message.isQuery
+                // Set colors based on query or response
+                if (message.isQuery) {
+                    holder.messageText.background = ContextCompat.getDrawable(holder.itemView.context, R.drawable.message_background)?.apply {
+                        setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green)) // Green for queries
+                    }
+                    holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.white))
+                } else {
+                    holder.messageText.background = ContextCompat.getDrawable(holder.itemView.context, R.drawable.message_background)?.apply {
+                        setTint(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray)) // Gray for responses
+                    }
+                    holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
+                }
+                holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
 
                 if (!message.isQuery && message.audioFile != null) {
                     holder.audioControlButton.visibility = View.VISIBLE

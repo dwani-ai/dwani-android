@@ -8,44 +8,6 @@
         android:entryValues="@array/language_values"
         android:summary="Select the transcription language"/>
 
-    <SwitchPreferenceCompat
-        android:key="dark_theme"
-        android:title="Dark Theme"
-        android:defaultValue="false"
-        android:summary="Enable dark mode"/>
-
-    <EditTextPreference
-        android:key="max_retries"
-        android:title="Max API Retries"
-        android:defaultValue="3"
-        android:inputType="number"
-        android:summary="Set the number of retry attempts for API calls"/>
-
-    <EditTextPreference
-        android:key="transcription_api_endpoint"
-        android:title="Transcription API Endpoint"
-        android:defaultValue="https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
-        android:inputType="textUri"
-        android:summary="Set the URL for the transcription API"/>
-
-    <EditTextPreference
-        android:key="chat_api_endpoint"
-        android:title="Chat API Endpoint"
-        android:defaultValue="https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
-        android:inputType="textUri"
-        android:summary="Set the URL for the chat API"/>
-
-    <EditTextPreference
-        android:key="chat_api_key"
-        android:title="Chat API Key"
-        android:defaultValue=""
-        android:inputType="textPassword"
-        android:summary="Enter your secure API key for the chat endpoint"/>
-
-    <Preference
-        android:key="test_endpoints"
-        android:title="Test Endpoints"
-        android:summary="Check if the API endpoints are reachable"/>
 
     <PreferenceCategory android:title="Text-to-Speech Settings">
         <SwitchPreferenceCompat
@@ -70,4 +32,49 @@
             android:summary="Select the voice for text-to-speech"
             android:dependency="tts_enabled"/>
     </PreferenceCategory>
+
+    <PreferenceCategory android:title="API Endpoints">
+        <EditTextPreference
+            android:key="max_retries"
+            android:title="Max API Retries"
+            android:defaultValue="3"
+            android:inputType="number"
+            android:summary="Set the number of retry attempts for API calls"/>
+
+        <EditTextPreference
+            android:key="transcription_api_endpoint"
+            android:title="Transcription API Endpoint"
+            android:defaultValue="https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+            android:inputType="textUri"
+            android:summary="Set the URL for the transcription API"/>
+
+        <EditTextPreference
+            android:key="chat_api_endpoint"
+            android:title="Chat API Endpoint"
+            android:defaultValue="https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+            android:inputType="textUri"
+            android:summary="Set the URL for the chat API"/>
+
+        <EditTextPreference
+            android:key="chat_api_key"
+            android:title="Chat API Key"
+            android:defaultValue="your-new-secret-api-key"
+            android:inputType="textPassword"
+            android:summary="Enter your secure API key for the chat endpoint"/>
+        <Preference
+            android:key="test_endpoints"
+            android:title="Test Endpoints"
+            android:summary="Check if the API endpoints are reachable"/>
+
+    </PreferenceCategory>
+
+
+    <SwitchPreferenceCompat
+        android:key="dark_theme"
+        android:title="Dark Theme"
+        android:defaultValue="false"
+        android:summary="Enable dark mode"/>
+
+
+
 </PreferenceScreen>

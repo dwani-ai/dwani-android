@@ -51,7 +51,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
-    private val RECORD_AUDIO_PERMISSION_CODE = 100
+    private val recordAudioPermissionCode = 100
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
     private lateinit var historyRecyclerView: RecyclerView
@@ -62,11 +62,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
     private var isRecording = false
-    private val SAMPLE_RATE = 16000
-    private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-    private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val RETRY_DELAY_MS = 2000L
-    private val MIN_RECORDING_DURATION_MS = 1000L // Minimum duration: 1 second
+    private val sampleRate = 16000
+    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
+    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+    private val retryDelayMs = 2000L
+    private val minRecordingDurationMs = 1000L // Minimum duration: 1 second
     private var recordingStartTime: Long = 0L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE,
+                recordAudioPermissionCode,
             )
         }
 
@@ -273,13 +273,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         audioRecord =
             AudioRecord(
                 AudioSource.MIC,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
+                sampleRate,
+                channelConfig,
+                audioFormat,
                 bufferSize,
             )
 
@@ -313,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                 audioRecord?.release()
                 audioRecord = null
                 val duration = System.currentTimeMillis() - recordingStartTime
-                if (duration >= MIN_RECORDING_DURATION_MS) {
+                if (duration >= minRecordingDurationMs) {
                     writeWavFile(recordedData.toByteArray())
                     if (audioFile != null && audioFile!!.exists()) {
                         sendAudioToApi(audioFile)
@@ -352,7 +352,7 @@ class MainActivity : AppCompatActivity() {
                     val totalAudioLen = pcmData.size
                     val totalDataLen = totalAudioLen + 36
                     val channels = 1
-                    val sampleRate = SAMPLE_RATE
+                    val sampleRate = sampleRate
                     val bitsPerSample = 16
                     val byteRate = sampleRate * channels * bitsPerSample / 8
 
@@ -392,9 +392,11 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint",
-            "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/")
-            ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+        val transcriptionApiEndpoint =
+            prefs.getString(
+                "transcription_api_endpoint",
+                "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/",
+            ) ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
 
         val client =
             OkHttpClient.Builder()
@@ -433,7 +435,7 @@ class MainActivity : AppCompatActivity() {
                         success = true
                     } else {
                         attempts++
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                        if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                         runOnUiThread {
                             Toast.makeText(
                                 this,
@@ -445,9 +447,13 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: IOException) {
                     e.printStackTrace()
                     attempts++
-                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                    if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                     runOnUiThread {
-                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this,
+                            "Network error: ${e.message}, retrying ($attempts/$maxRetries)",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 }
             }
@@ -471,19 +477,31 @@ class MainActivity : AppCompatActivity() {
                         getChatResponse(voiceQueryText)
                     } else {
                         runOnUiThread {
-                            Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                this,
+                                "Voice Query empty or invalid, try again",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                             progressBar.visibility = View.GONE
                         }
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
-                        Toast.makeText(this, "Failed to parse transcription: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this,
+                            "Failed to parse transcription: ${e.message}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                         progressBar.visibility = View.GONE
                     }
                 }
             } else {
                 runOnUiThread {
-                    Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this,
+                        "Voice Query failed after $maxRetries retries",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                     progressBar.visibility = View.GONE
                 }
             }
@@ -494,12 +512,16 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val maxRetries = prefs.getString(
-                "max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString(
-            "chat_api_endpoint",
-            "https://gaganyatri-llm-indic-server-cpu.hf.space/chat")
-            ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        val maxRetries =
+            prefs.getString(
+                "max_retries", "3",
+            )?.toIntOrNull() ?: 3
+        val chatApiEndpoint =
+            prefs.getString(
+                "chat_api_endpoint",
+                "https://gaganyatri-llm-indic-server-cpu.hf.space/chat",
+            )
+                ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
         val chatApiKey = "your-new-secret-api-key" // Hardcoded for testing
 
         val client =
@@ -533,7 +555,7 @@ class MainActivity : AppCompatActivity() {
                         success = true
                     } else {
                         attempts++
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                        if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                         runOnUiThread {
                             Toast.makeText(
                                 this,
@@ -545,7 +567,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: IOException) {
                     e.printStackTrace()
                     attempts++
-                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                    if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                     runOnUiThread {
                         Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                     }
@@ -578,7 +600,7 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == RECORD_AUDIO_PERMISSION_CODE && grantResults.isNotEmpty() &&
+        if (requestCode == recordAudioPermissionCode && grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
             // Permission granted

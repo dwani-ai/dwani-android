@@ -4,6 +4,7 @@ kotlin = "1.9.23"
 hilt = "2.51"
 ksp = "1.9.23-1.0.20"
 ktlint = "12.1.0"
+# javapoet = "1.13.0"
 androidxCore = "1.15.0"
 androidxAppcompat = "1.7.0"
 androidxActivity = "1.10.1"
@@ -58,7 +59,7 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 converter-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "gson" }
-
+# javapoet = { module = "com.squareup.javapoet:javapoet", version.ref = "javapoet" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }

@@ -45,7 +45,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
-        freeCompilerArgs += "-Xopt-in=kotlin.RequiresOptIn"
+        freeCompilerArgs += "-opt-in=kotlin.RequiresOptIn"
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -92,8 +92,12 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    implementation(files("libs/javapoet-1.13.0.jar"))
     implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
+    ksp(libs.hilt.compiler) {
+        // exclude("com.squareup.javapoet", "javapoet")
+    }
+    // ksp("com.squareup.javapoet:javapoet:1.13.0")
 
     implementation(libs.timber)
 }

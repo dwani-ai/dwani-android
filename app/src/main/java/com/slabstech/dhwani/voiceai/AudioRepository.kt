@@ -28,27 +28,25 @@ class AudioRepository(
     private val context: Context,
     private val okHttpClient: OkHttpClient,
 ) {
-    var audioFile: File? = null
-    private var audioRecord: AudioRecord? = null
-    private var isRecording = false
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
     private val retryDelayMs = 2000L
-    private val minRecordingDurationMs = 1000L
-    private var recordingStartTime: Long = 0L
+    private val minRecordingDurationMs = 500L
 
-    suspend fun startRecording(): FloatArray? =
+    suspend fun startRecording(): Pair<FloatArray?, File?> =
         withContext(Dispatchers.IO) {
+            Timber.d("startRecording: Checking permission")
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 Timber.e("RECORD_AUDIO permission not granted")
-                return@withContext null
+                return@withContext Pair(null, null)
             }
 
+            Timber.d("startRecording: Initializing AudioRecord")
             val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-            audioRecord =
+            val audioRecord =
                 AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     sampleRate,
@@ -56,41 +54,64 @@ class AudioRepository(
                     audioFormat,
                     bufferSize,
                 )
-            audioFile = File(context.cacheDir, "temp_audio.wav")
+            val audioFile = File(context.cacheDir, "temp_audio_${System.currentTimeMillis()}.wav")
             val audioBuffer = ByteArray(bufferSize)
             val recordedData = mutableListOf<Byte>()
 
+            Timber.d("startRecording: Setting isRecording = true")
             isRecording = true
-            recordingStartTime = System.currentTimeMillis()
-            audioRecord?.startRecording()
+            val recordingStartTime = System.currentTimeMillis()
 
             try {
+                Timber.d("startRecording: Starting recording")
+                audioRecord.startRecording()
                 while (isRecording) {
-                    val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
+                    val bytesRead = audioRecord.read(audioBuffer, 0, bufferSize)
+                    Timber.d("startRecording: Bytes read = $bytesRead")
                     if (bytesRead > 0) {
                         recordedData.addAll(audioBuffer.take(bytesRead))
+                    } else if (bytesRead < 0) {
+                        Timber.e("startRecording: Error reading audio data, code = $bytesRead")
+                        break
                     }
                 }
-                audioRecord?.stop()
-                audioRecord?.release()
-                audioRecord = null
+                Timber.d("startRecording: Stopping recording")
+                audioRecord.stop()
+                audioRecord.release()
 
                 val duration = System.currentTimeMillis() - recordingStartTime
-                if (duration >= minRecordingDurationMs && audioFile != null) {
-                    writeWavFile(recordedData.toByteArray(), audioFile!!)
-                    return@withContext calculateRMS(recordedData.toByteArray())
+                Timber.d("Recording duration: $duration ms")
+                if (duration >= minRecordingDurationMs) {
+                    writeWavFile(recordedData.toByteArray(), audioFile)
+                    val rms = calculateRMS(recordedData.toByteArray())
+                    return@withContext Pair(rms, audioFile)
                 } else {
-                    audioFile?.delete()
-                    return@withContext null
+                    Timber.w("Recording too short: $duration ms, deleting file")
+                    audioFile.delete()
+                    return@withContext Pair(null, null)
                 }
+            } catch (e: IllegalStateException) {
+                Timber.e(e, "AudioRecord failed to start or stop")
+                audioRecord.release()
+                audioFile.delete()
+                return@withContext Pair(null, null)
             } catch (e: Exception) {
-                Timber.e(e, "Recording failed")
-                audioRecord?.stop()
-                audioRecord?.release()
-                audioRecord = null
-                audioFile?.delete()
-                return@withContext null
+                Timber.e(e, "Recording failed unexpectedly")
+                audioRecord.stop()
+                audioRecord.release()
+                audioFile.delete()
+                return@withContext Pair(null, null)
+            } finally {
+                Timber.d("startRecording: Cleanup, setting isRecording = false")
+                isRecording = false
             }
+        }
+
+    var isRecording: Boolean = false
+        get() = field
+        set(value) {
+            Timber.d("isRecording set to $value")
+            field = value
         }
 
     fun stopRecording() {
@@ -149,8 +170,8 @@ class AudioRepository(
     private suspend fun isNetworkAvailable(): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                val address = InetAddress.getByName("8.8.8.8") // Google's DNS
-                address.isReachable(2000) // 2-second timeout
+                val address = InetAddress.getByName("8.8.8.8")
+                address.isReachable(2000)
             } catch (e: Exception) {
                 Timber.e(e, "Network check failed")
                 false
@@ -194,6 +215,19 @@ class AudioRepository(
                     .header("accept", "application/json")
                     .post(requestBody)
                     .build()
+
+            try {
+                val pingRequest =
+                    Request.Builder()
+                        .url(transcriptionApiEndpoint)
+                        .head()
+                        .build()
+                okHttpClient.newCall(pingRequest).execute().use { response ->
+                    Timber.d("Ping response code: ${response.code}")
+                }
+            } catch (e: IOException) {
+                Timber.w(e, "Ping failed, proceeding anyway")
+            }
 
             var attempts = 0
             var success = false

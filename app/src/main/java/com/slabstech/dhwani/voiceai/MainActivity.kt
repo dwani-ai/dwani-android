@@ -8,6 +8,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -30,14 +33,25 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
 import org.koin.androidx.viewmodel.ext.android.viewModel
-import timber.log.Timber
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     private val recordAudioPermissionCode = 100
+    private var audioRecord: AudioRecord? = null
+    private var audioFile: File? = null
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var audioLevelBar: android.widget.ProgressBar
     private lateinit var progressBar: android.widget.ProgressBar
@@ -45,7 +59,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
+    private val sampleRate = 16000
+    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
+    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
     private var currentTheme: Boolean? = null
+    private var isRecording = false
 
     private val viewModel: MainViewModel by viewModel()
     private lateinit var messageAdapter: MessageAdapter
@@ -80,31 +98,11 @@ class MainActivity : AppCompatActivity() {
             adapter = messageAdapter
         }
 
-        // Observe messages LiveData
         viewModel.messages.observe(this) { messages ->
             messageAdapter.updateMessages(messages.toMutableList())
             if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
                 historyRecyclerView.scrollToPosition(messages.size - 1)
             }
-        }
-
-        // Observe recording state
-        viewModel.isRecording.observe(this) { isRecording ->
-            Timber.d("isRecording changed: $isRecording")
-            if (isRecording) {
-                animateFabRecordingStart()
-            } else {
-                animateFabRecordingStop()
-            }
-        }
-
-        viewModel.audioLevels.observe(this) { levels ->
-            audioLevelBar.progress =
-                levels.maxOrNull()?.let { (it * 100).toInt().coerceIn(0, 100) } ?: 0
-        }
-
-        viewModel.progressVisible.observe(this) { visible ->
-            progressBar.visibility = if (visible) View.VISIBLE else View.GONE
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -116,17 +114,15 @@ class MainActivity : AppCompatActivity() {
                 recordAudioPermissionCode,
             )
         }
+
         pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    Timber.d("Push-to-talk started")
-                    viewModel.startRecording()
+                    startRecording()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    Timber.d("Push-to-talk stopped")
-                    viewModel.stopRecording()
-                    animateFabRecordingStop() // Ensure animation stops
+                    stopRecording()
                     true
                 }
                 else -> false
@@ -156,23 +152,18 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
-
             R.id.action_auto_scroll -> {
                 item.isChecked = !item.isChecked
                 true
             }
-
             R.id.action_clear -> {
                 viewModel.clearMessages()
                 true
             }
-
             R.id.action_repeat -> {
-                // TODO: Implement repeat with ViewModel
                 Toast.makeText(this, "Repeat not implemented yet", Toast.LENGTH_SHORT).show()
                 true
             }
-
             R.id.action_share -> {
                 val lastMessage = viewModel.messages.value?.lastOrNull()
                 if (lastMessage != null) {
@@ -182,7 +173,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 true
             }
-
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -235,6 +225,150 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
+    private fun startRecording() {
+        val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        audioRecord = AudioRecord(AudioSource.MIC, sampleRate, channelConfig, audioFormat, bufferSize)
+        audioFile = File(cacheDir, "temp_audio.wav")
+        val audioBuffer = ByteArray(bufferSize)
+        val recordedData = mutableListOf<Byte>()
+
+        isRecording = true
+        audioRecord?.startRecording()
+        animateFabRecordingStart()
+
+        Thread {
+            while (isRecording) {
+                val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
+                if (bytesRead > 0) {
+                    recordedData.addAll(audioBuffer.take(bytesRead))
+                    val rmsValues = calculateRMS(recordedData.toByteArray())
+                    runOnUiThread { audioLevelBar.progress = rmsValues.maxOrNull()?.let { (it * 100).toInt().coerceIn(0, 100) } ?: 0 }
+                }
+            }
+            audioRecord?.stop()
+            audioRecord?.release()
+            audioRecord = null
+
+            if (audioFile != null) {
+                writeWavFile(recordedData.toByteArray())
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                sendAudioToApi(timestamp)
+            }
+        }.start()
+    }
+
+    private fun calculateRMS(data: ByteArray): FloatArray {
+        val rmsValues = mutableListOf<Float>()
+        for (i in 0 until data.size step 2) {
+            if (i + 1 < data.size) {
+                val sample = (data[i].toInt() and 0xFF) or (data[i + 1].toInt() shl 8)
+                val rms = (Math.sqrt((sample * sample).toDouble()) / 32768.0).toFloat()
+                rmsValues.add(rms)
+            }
+        }
+        return rmsValues.toFloatArray()
+    }
+
+    private fun stopRecording() {
+        isRecording = false
+        animateFabRecordingStop()
+    }
+
+    private fun writeWavFile(pcmData: ByteArray) {
+        try {
+            FileOutputStream(audioFile!!).use { fos ->
+                val totalAudioLen = pcmData.size
+                val totalDataLen = totalAudioLen + 36
+                val channels = 1
+                val byteRate = sampleRate * channels * 16 / 8
+
+                val header = ByteBuffer.allocate(44)
+                header.order(ByteOrder.LITTLE_ENDIAN)
+                header.put("RIFF".toByteArray())
+                header.putInt(totalDataLen)
+                header.put("WAVE".toByteArray())
+                header.put("fmt ".toByteArray())
+                header.putInt(16)
+                header.putShort(1.toShort())
+                header.putShort(channels.toShort())
+                header.putInt(sampleRate)
+                header.putInt(byteRate)
+                header.putShort((channels * 16 / 8).toShort())
+                header.putShort(16.toShort())
+                header.put("data".toByteArray())
+                header.putInt(totalAudioLen)
+
+                fos.write(header.array())
+                fos.write(pcmData)
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun sendAudioToApi(timestamp: String) {
+        progressBar.visibility = View.VISIBLE
+        Thread {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val language = prefs.getString("language", "kannada") ?: "kannada"
+            val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+            val transcriptionApiEndpoint =
+                prefs.getString(
+                    "transcription_api_endpoint",
+                    "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/",
+                ) ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+
+            val client = viewModel.okHttpClient
+            val requestBody =
+                MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", audioFile!!.name, audioFile!!.asRequestBody("audio/x-wav".toMediaType()))
+                    .build()
+            val request =
+                Request.Builder()
+                    .url("$transcriptionApiEndpoint?language=$language")
+                    .header("accept", "application/json")
+                    .post(requestBody)
+                    .build()
+
+            var attempts = 0
+            var success = false
+            var responseBody: String? = null
+
+            while (attempts < maxRetries && !success) {
+                try {
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        responseBody = response.body?.string()
+                        success = true
+                    }
+                    response.close()
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                }
+                if (!success) {
+                    attempts++
+                    if (attempts < maxRetries) Thread.sleep(2000)
+                }
+            }
+
+            runOnUiThread {
+                progressBar.visibility = View.GONE
+                if (success && responseBody != null) {
+                    val json = JSONObject(responseBody)
+                    val text = json.optString("text", "")
+                    if (text.isNotEmpty() && !json.has("error")) {
+                        viewModel.addMessage("Voice Query: $text", timestamp, true)
+                    } else {
+                        viewModel.addMessage("Error: Voice query empty or invalid", timestamp, false)
+                    }
+                } else {
+                    viewModel.addMessage("Error: Failed after $maxRetries retries", timestamp, false)
+                }
+            }
+        }.start()
+    }
+
     class MessageAdapter(
         private val messages: MutableList<Message>,
         private val onLongClick: (Int) -> Unit,
@@ -249,8 +383,7 @@ class MainActivity : AppCompatActivity() {
             parent: ViewGroup,
             viewType: Int,
         ): MessageViewHolder {
-            val view =
-                LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
             return MessageViewHolder(view)
         }
 
@@ -262,18 +395,13 @@ class MainActivity : AppCompatActivity() {
             holder.messageText.text = message.text
             holder.timestampText.text = message.timestamp
 
-            // Align queries (isQuery = true) to the right, answers to the left
             val layoutParams = holder.messageContainer.layoutParams as LinearLayout.LayoutParams
-            layoutParams.gravity =
-                if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
+            layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
             holder.messageContainer.layoutParams = layoutParams
 
-            // Set bubble color: green for queries (right), white for answers (left)
-            holder.messageContainer.isActivated =
-                !message.isQuery // White for answers, green for queries
+            holder.messageContainer.isActivated = !message.isQuery
 
-            val animation =
-                AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+            val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
             holder.itemView.startAnimation(animation)
 
             holder.itemView.setOnLongClickListener {

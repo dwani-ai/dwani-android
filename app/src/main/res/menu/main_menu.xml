@@ -29,4 +29,10 @@
         android:checkable="true"
         android:checked="true"
         app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_tts_enabled"
+        android:title="Enable TTS"
+        android:checkable="true"
+        android:checked="false"
+        app:showAsAction="never"/>
 </menu>

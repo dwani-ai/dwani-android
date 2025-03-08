@@ -104,6 +104,10 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
         }
 
+        if (!prefs.contains("tts_enabled")) {
+            prefs.edit().putBoolean("tts_enabled", false).apply() // Changed to false
+        }
+
         messageAdapter = MessageAdapter(messageList, { position ->
             showMessageOptionsDialog(position)
         }, { message, button ->
@@ -196,6 +200,13 @@ class MainActivity : AppCompatActivity() {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(this)
                 prefs.edit().putBoolean(AUTO_PLAY_KEY, item.isChecked).apply()
                 Toast.makeText(this, "Auto-Play TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.action_tts_enabled -> {
+                item.isChecked = !item.isChecked
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                prefs.edit().putBoolean("tts_enabled", item.isChecked).apply()
+                Toast.makeText(this, "TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
                 true
             }
             else -> super.onOptionsItemSelected(item)

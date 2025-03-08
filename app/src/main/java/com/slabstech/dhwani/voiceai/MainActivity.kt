@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
     private lateinit var ttsProgressBar: android.widget.ProgressBar
+    private val AUTO_PLAY_KEY = "auto_play_tts"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -98,6 +99,10 @@ class MainActivity : AppCompatActivity() {
         ttsProgressBar = findViewById(R.id.ttsProgressBar)
 
         setSupportActionBar(toolbar)
+
+        if (!prefs.contains(AUTO_PLAY_KEY)) {
+            prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
+        }
 
         messageAdapter = MessageAdapter(messageList, { position ->
             showMessageOptionsDialog(position)
@@ -184,6 +189,13 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this, "No messages to share", Toast.LENGTH_SHORT).show()
                 }
+                true
+            }
+            R.id.action_auto_play -> {
+                item.isChecked = !item.isChecked
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                prefs.edit().putBoolean(AUTO_PLAY_KEY, item.isChecked).apply()
+                Toast.makeText(this, "Auto-Play TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -555,6 +567,7 @@ class MainActivity : AppCompatActivity() {
     private fun textToSpeech(text: String, message: Message) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!prefs.getBoolean("tts_enabled", true)) return
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true) // Check auto-play setting
 
         val voice = prefs.getString("tts_voice", "kannada-female") ?: "kannada-female"
         val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
@@ -600,10 +613,12 @@ class MainActivity : AppCompatActivity() {
                                 ttsProgressBar.visibility = View.GONE
                                 val messageIndex = messageList.indexOf(message)
                                 if (messageIndex != -1) {
-                                    messageAdapter.notifyItemChanged(messageIndex) // Notify adapter to rebind
+                                    messageAdapter.notifyItemChanged(messageIndex)
                                     android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
                                 }
-                                playAudio(audioFile)
+                                if (autoPlay) {
+                                    playAudio(audioFile) // Only play if auto-play is enabled
+                                }
                             } else {
                                 ttsProgressBar.visibility = View.GONE
                                 Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()

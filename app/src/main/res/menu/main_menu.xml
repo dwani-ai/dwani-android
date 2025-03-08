@@ -23,4 +23,10 @@
         android:id="@+id/action_share"
         android:title="Share"
         app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_auto_play"
+        android:title="Auto-Play TTS"
+        android:checkable="true"
+        android:checked="true"
+        app:showAsAction="never"/>
 </menu>

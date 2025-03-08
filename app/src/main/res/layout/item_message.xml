@@ -23,14 +23,30 @@
             android:textSize="16sp"
             android:textColor="#212121"/>
 
-        <TextView
-            android:id="@+id/timestampText"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textColor="#757575"
+            android:orientation="horizontal"
             android:layout_gravity="end"
-            android:layout_marginTop="2dp"/>
-    </LinearLayout>
+            android:layout_marginTop="2dp">
 
+            <TextView
+                android:id="@+id/timestampText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="#757575"/>
+
+            <ImageButton
+                android:id="@+id/audioControlButton"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:visibility="gone"
+                android:src="@android:drawable/ic_media_play"
+                android:background="@android:color/transparent"
+                android:tint="@color/whatsapp_green"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Play/Stop Audio"/>
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>

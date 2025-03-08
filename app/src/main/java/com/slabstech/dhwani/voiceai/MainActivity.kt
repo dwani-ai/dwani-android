@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
+    private lateinit var ttsProgressBar: android.widget.ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -94,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
+        ttsProgressBar = findViewById(R.id.ttsProgressBar)
 
         setSupportActionBar(toolbar)
 
@@ -577,6 +579,8 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
+                runOnUiThread { ttsProgressBar.visibility = View.VISIBLE } // Before API call
+
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val audioBytes = response.body?.bytes()
@@ -601,6 +605,7 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
                     }
                 }
+                runOnUiThread { ttsProgressBar.visibility = View.GONE }
             } catch (e: IOException) {
                 runOnUiThread {
                     Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()

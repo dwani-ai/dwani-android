@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import kotlinx.coroutines.CoroutineScope
@@ -84,6 +85,24 @@ class SettingsActivity : AppCompatActivity() {
                     true
                 }
             }
+
+            // Update TTS Voice Summary
+            findPreference<ListPreference>("tts_voice")?.apply {
+                setOnPreferenceChangeListener { preference, newValue ->
+                    val index = entryValues.indexOf(newValue)
+                    if (index >= 0) {
+                        preference.summary = entries[index]
+                    }
+                    true
+                }
+                // Set initial summary
+                val initialIndex = entryValues.indexOf(value)
+                if (initialIndex >= 0) {
+                    summary = entries[initialIndex]
+                }
+            }
+
+
         }
 
         private fun validateUrl(url: String): Boolean {

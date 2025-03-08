@@ -10,4 +10,14 @@
         <item>hindi</item>
         <item>tamil</item>
     </string-array>
+    <string-array name="tts_voice_options">
+        <item>Kannada Female</item>
+        <item>Kannada Male</item>
+        <!-- Add more voices supported by your API -->
+    </string-array>
+    <string-array name="tts_voice_values">
+        <item>Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.</item>
+        <item>Suresh  speaks at a moderate pace with a slightly monotone tone. The recording is clear, with a close sound and only minimal ambient noise.</item>
+        <!-- Match API voice values -->
+    </string-array>
 </resources>

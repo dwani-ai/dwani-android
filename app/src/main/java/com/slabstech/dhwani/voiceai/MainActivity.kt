@@ -49,6 +49,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import android.media.MediaPlayer
+import java.io.FileInputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -73,6 +75,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
+    private lateinit var ttsProgressBar: android.widget.ProgressBar
+    private val AUTO_PLAY_KEY = "auto_play_tts"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -92,12 +96,23 @@ class MainActivity : AppCompatActivity() {
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
+        ttsProgressBar = findViewById(R.id.ttsProgressBar)
 
         setSupportActionBar(toolbar)
 
-        messageAdapter = MessageAdapter(messageList) { position ->
-            showMessageOptionsDialog(position)
+        if (!prefs.contains(AUTO_PLAY_KEY)) {
+            prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
         }
+
+        if (!prefs.contains("tts_enabled")) {
+            prefs.edit().putBoolean("tts_enabled", false).apply() // Changed to false
+        }
+
+        messageAdapter = MessageAdapter(messageList, { position ->
+            showMessageOptionsDialog(position)
+        }, { message, button ->
+            toggleAudioPlayback(message, button)
+        })
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
@@ -178,6 +193,20 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this, "No messages to share", Toast.LENGTH_SHORT).show()
                 }
+                true
+            }
+            R.id.action_auto_play -> {
+                item.isChecked = !item.isChecked
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                prefs.edit().putBoolean(AUTO_PLAY_KEY, item.isChecked).apply()
+                Toast.makeText(this, "Auto-Play TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.action_tts_enabled -> {
+                item.isChecked = !item.isChecked
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                prefs.edit().putBoolean("tts_enabled", item.isChecked).apply()
+                Toast.makeText(this, "TTS: ${if (item.isChecked) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -471,13 +500,15 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private var mediaPlayer: MediaPlayer? = null
+
     private fun getChatResponse(prompt: String) {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
-        val chatApiKey = "your-new-secret-api-key" // Hardcoded for testing
+        val chatApiKey = "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -535,12 +566,155 @@ class MainActivity : AppCompatActivity() {
                         historyRecyclerView.scrollToPosition(messageList.size - 1)
                     }
                     progressBar.visibility = View.GONE
+                    textToSpeech(answerText, message) // Pass message to store audio file
                 }
             } ?: runOnUiThread {
                 Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
             }
         }.start()
+    }
+
+    private fun textToSpeech(text: String, message: Message) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean("tts_enabled", true)) return
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
+
+        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
+            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
+        val apiKey = "your-new-secret-api-key"
+
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        val jsonMediaType = "application/json".toMediaType()
+        val requestBody = JSONObject().apply {
+            put("input", text)
+            put("voice", voice) // Uses the full description (e.g., "Anu speaks...")
+            put("model", "ai4bharat/indic-parler-tts")
+            put("response_format", "mp3")
+            put("speed", 1.0)
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url(ttsApiEndpoint)
+            .header("X-API-Key", apiKey)
+            .header("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+
+        runOnUiThread { ttsProgressBar.visibility = View.VISIBLE }
+
+        Thread {
+            try {
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val audioBytes = response.body?.bytes()
+                    runOnUiThread {
+                        if (audioBytes != null && audioBytes.isNotEmpty()) {
+                            val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                            FileOutputStream(audioFile).use { fos ->
+                                fos.write(audioBytes)
+                            }
+                            if (audioFile.exists() && audioFile.length() > 0) {
+                                message.audioFile = audioFile
+                                ttsProgressBar.visibility = View.GONE
+                                val messageIndex = messageList.indexOf(message)
+                                if (messageIndex != -1) {
+                                    messageAdapter.notifyItemChanged(messageIndex)
+                                    android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
+                                }
+                                if (autoPlay) {
+                                    playAudio(audioFile)
+                                }
+                            } else {
+                                ttsProgressBar.visibility = View.GONE
+                                Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            ttsProgressBar.visibility = View.GONE
+                            Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        ttsProgressBar.visibility = View.GONE
+                        Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: IOException) {
+                runOnUiThread {
+                    ttsProgressBar.visibility = View.GONE
+                    Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        message.audioFile?.let { audioFile ->
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                button.setImageResource(android.R.drawable.ic_media_play)
+            } else {
+                playAudio(audioFile)
+                button.setImageResource(R.drawable.ic_media_stop) // Custom drawable
+            }
+        }
+    }
+
+    private fun playAudio(audioFile: File) {
+        try {
+            if (!audioFile.exists()) {
+                Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer()
+            mediaPlayer?.apply {
+                setDataSource(FileInputStream(audioFile).fd)
+                prepare()
+                start()
+                val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
+                if (messageIndex != -1) {
+                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                    holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
+                }
+                setOnCompletionListener {
+                    it.release()
+                    mediaPlayer = null
+                    if (messageIndex != -1) {
+                        val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                        holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                    }
+                }
+                setOnErrorListener { mp, what, extra ->
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
+                    }
+                    mp.release()
+                    mediaPlayer = null
+                    if (messageIndex != -1) {
+                        val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                        holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                    }
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(this, "Audio playback failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -562,20 +736,28 @@ class MainActivity : AppCompatActivity() {
         }
         audioRecord?.release()
         audioRecord = null
+        mediaPlayer?.release()
+        mediaPlayer = null
+        messageList.forEach { it.audioFile?.delete() }
     }
-}
 
-data class Message(val text: String, val timestamp: String, val isQuery: Boolean)
-
+data class Message(
+    val text: String,
+    val timestamp: String,
+    val isQuery: Boolean,
+    var audioFile: File? = null
+)
 class MessageAdapter(
     private val messages: MutableList<Message>,
-    private val onLongClick: (Int) -> Unit
+    private val onLongClick: (Int) -> Unit,
+    private val onAudioControlClick: (Message, ImageButton) -> Unit
 ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.messageText)
         val timestampText: TextView = itemView.findViewById(R.id.timestampText)
         val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
+        val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -588,13 +770,22 @@ class MessageAdapter(
         holder.messageText.text = message.text
         holder.timestampText.text = message.timestamp
 
-        // Align queries (isQuery = true) to the right, answers to the left
         val layoutParams = holder.messageContainer.layoutParams as LinearLayout.LayoutParams
         layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
         holder.messageContainer.layoutParams = layoutParams
 
-        // Set bubble color: green for queries (right), white for answers (left)
-        holder.messageContainer.isActivated = !message.isQuery // White for answers, green for queries
+        holder.messageContainer.isActivated = !message.isQuery
+
+        if (!message.isQuery && message.audioFile != null) {
+            holder.audioControlButton.visibility = View.VISIBLE
+            holder.audioControlButton.setOnClickListener {
+                onAudioControlClick(message, holder.audioControlButton)
+            }
+            android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
+        } else {
+            holder.audioControlButton.visibility = View.GONE
+            android.util.Log.d("MessageAdapter", "Hiding audio button for message: ${message.text}")
+        }
 
         val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
@@ -606,4 +797,5 @@ class MessageAdapter(
     }
 
     override fun getItemCount(): Int = messages.size
+}
 }

@@ -117,11 +117,12 @@ class MainActivity : AppCompatActivity() {
         pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    viewModel.startRecording() // Fixed
+                    viewModel.startRecording()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    viewModel.stopRecording() // Fixed
+                    viewModel.stopRecording()
+                    animateFabRecordingStop() // Ensure animation stops
                     true
                 }
                 else -> false

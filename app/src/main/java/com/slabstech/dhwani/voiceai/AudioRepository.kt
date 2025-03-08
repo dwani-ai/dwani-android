@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
+import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -38,11 +39,10 @@ class AudioRepository(
 
     suspend fun startRecording(): FloatArray? =
         withContext(Dispatchers.IO) {
-            // Check RECORD_AUDIO permission
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED
             ) {
-                // Permission not granted; return null to let caller handle it
+                Timber.e("RECORD_AUDIO permission not granted")
                 return@withContext null
             }
 
@@ -83,7 +83,7 @@ class AudioRepository(
                     return@withContext null
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Timber.e(e, "Recording failed")
                 audioRecord?.stop()
                 audioRecord?.release()
                 audioRecord = null
@@ -139,13 +139,16 @@ class AudioRepository(
                 fos.write(pcmData)
             }
         } catch (e: IOException) {
-            e.printStackTrace()
+            Timber.e(e, "Failed to write WAV file")
         }
     }
 
     suspend fun sendAudioToApi(audioFile: File?): Pair<String?, String?> =
         withContext(Dispatchers.IO) {
-            if (audioFile == null || !audioFile.exists()) return@withContext Pair(null, "Audio file not found")
+            if (audioFile == null || !audioFile.exists()) {
+                Timber.e("Audio file is null or does not exist")
+                return@withContext Pair(null, "Audio file not found")
+            }
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
             val language = prefs.getString("language", "kannada") ?: "kannada"
@@ -180,28 +183,44 @@ class AudioRepository(
             while (attempts < maxRetries && !success) {
                 try {
                     val response = okHttpClient.newCall(request).execute()
+                    Timber.d("API Response Code: ${response.code}")
                     if (response.isSuccessful) {
                         responseBody = response.body?.string()
+                        Timber.d("API Response Body: $responseBody")
                         success = true
                     } else {
+                        Timber.e("API failed with code: ${response.code}, message: ${response.message}")
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(retryDelayMs)
                     }
+                    response.close() // Ensure resources are released
                 } catch (e: IOException) {
+                    Timber.e(e, "API call failed on attempt $attempts: ${e.message}")
                     attempts++
                     if (attempts < maxRetries) Thread.sleep(retryDelayMs)
+                } catch (e: Exception) {
+                    Timber.e(e, "Unexpected error on attempt $attempts: ${e.message}")
+                    return@withContext Pair(null, "Unexpected error: ${e.message}")
                 }
             }
 
             return@withContext if (success && responseBody != null) {
-                val json = JSONObject(responseBody)
-                val text = json.optString("text", "")
-                if (text.isNotEmpty() && !json.has("error")) {
-                    Pair(text, null)
-                } else {
-                    Pair(null, "Voice query empty or invalid")
+                try {
+                    val json = JSONObject(responseBody)
+                    val text = json.optString("text", "")
+                    if (text.isNotEmpty() && !json.has("error")) {
+                        Timber.d("Transcription successful: $text")
+                        Pair(text, null)
+                    } else {
+                        Timber.e("Invalid response: $responseBody")
+                        Pair(null, "Voice query empty or invalid")
+                    }
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to parse response: $responseBody")
+                    Pair(null, "Response parsing error: ${e.message}")
                 }
             } else {
+                Timber.e("Failed after $maxRetries retries")
                 Pair(null, "Failed after $maxRetries retries")
             }
         }

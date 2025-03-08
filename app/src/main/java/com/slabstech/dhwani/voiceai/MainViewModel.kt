@@ -44,7 +44,13 @@ class MainViewModel(private val audioRepository: AudioRepository) : ViewModel() 
         viewModelScope.launch {
             _isRecording.value = true
             val rmsValues = audioRepository.startRecording()
-            _audioLevels.value = rmsValues ?: floatArrayOf()
+            if (rmsValues == null) {
+                _isRecording.value = false
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                addMessage("Error: Recording permission denied", timestamp, false)
+            } else {
+                _audioLevels.value = rmsValues
+            }
         }
     }
 

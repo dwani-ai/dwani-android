@@ -1,52 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/messageContainer"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:padding="4dp">
+    android:orientation="vertical"
+    android:padding="8dp">
 
-    <LinearLayout
-        android:id="@+id/messageContainer"
+    <TextView
+        android:id="@+id/messageText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:maxWidth="280dp"
-        android:background="@drawable/whatsapp_message_bubble"
-        android:padding="8dp"
-        android:layout_margin="2dp">
+        android:textSize="16sp"
+        android:textColor="#000000"
+        android:background="@drawable/message_background"
+        android:padding="8dp"/>
 
-        <TextView
-            android:id="@+id/messageText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:textColor="#212121"/>
+    <TextView
+        android:id="@+id/timestampText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="#666666"/>
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_gravity="end"
-            android:layout_marginTop="2dp">
-
-            <TextView
-                android:id="@+id/timestampText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="12sp"
-                android:textColor="#757575"/>
-
-            <ImageButton
-                android:id="@+id/audioControlButton"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:visibility="visible"
-                android:src="@android:drawable/ic_media_play"
-                android:background="@android:color/transparent"
-                android:tint="@color/whatsapp_green"
-                android:layout_marginStart="8dp"
-                android:contentDescription="Play/Stop Audio"/>
-        </LinearLayout>
-    </LinearLayout>
+    <ImageButton
+        android:id="@+id/audioControlButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@android:drawable/ic_media_play"
+        android:background="@android:color/transparent"
+        android:visibility="gone"/>
 </LinearLayout>

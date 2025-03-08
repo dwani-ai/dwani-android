@@ -33,6 +33,8 @@ import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.widget.LinearLayout
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import com.google.android.material.appbar.AppBarLayout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -115,7 +117,14 @@ class AnswerActivity : AppCompatActivity() {
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@AnswerActivity)
                 adapter = messageAdapter
+                visibility = View.VISIBLE
+                setBackgroundColor(ContextCompat.getColor(this@AnswerActivity, android.R.color.white))
+                layoutParams = CoordinatorLayout.LayoutParams(CoordinatorLayout.LayoutParams.MATCH_PARENT, CoordinatorLayout.LayoutParams.MATCH_PARENT).apply {
+                    behavior = AppBarLayout.ScrollingViewBehavior()
+                    setMargins(0, 0, 0, 150) // Space for bottom navigation
+                }
             }
+            android.util.Log.d("AnswerActivity", "RecyclerView initialized, Adapter item count: ${messageAdapter.itemCount}")
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
@@ -142,27 +151,32 @@ class AnswerActivity : AppCompatActivity() {
             }
 
             sendButton.setOnClickListener {
-                val query = textQueryInput.text.toString().trim()
-                if (query.isNotEmpty()) {
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Query: $query", timestamp, true)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
-                        historyRecyclerView.scrollToPosition(messageList.size - 1)
+                try {
+                    val query = textQueryInput.text.toString().trim()
+                    if (query.isNotEmpty()) {
+                        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                        val message = Message("Query: $query", timestamp, true)
+                        messageList.add(message)
+                        android.util.Log.d("AnswerActivity", "Text Query Added: ${message.text}, List Size: ${messageList.size}")
+                        messageAdapter.notifyItemInserted(messageList.size - 1)
+                        messageAdapter.notifyDataSetChanged()
+                        if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
+                            historyRecyclerView.scrollToPosition(messageList.size - 1)
+                        }
+                        getChatResponse(query)
+                        textQueryInput.text.clear()
+                    } else {
+                        Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
                     }
-                    getChatResponse(query)
-                    textQueryInput.text.clear()
-                } else {
-                    Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    android.util.Log.e("AnswerActivity", "Crash in sendButton click: ${e.message}", e)
+                    Toast.makeText(this, "Error sending query: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
 
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
-                    R.id.nav_answer -> {
-                        true // Stay in AnswerActivity
-                    }
+                    R.id.nav_answer -> true
                     R.id.nav_translate -> {
                         startActivity(Intent(this, TranslateActivity::class.java))
                         true
@@ -176,7 +190,7 @@ class AnswerActivity : AppCompatActivity() {
             }
             bottomNavigation.selectedItemId = R.id.nav_answer
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("AnswerActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
         }
@@ -201,6 +215,7 @@ class AnswerActivity : AppCompatActivity() {
                 messageList.clear()
                 lastQuery = null
                 messageAdapter.notifyDataSetChanged()
+                android.util.Log.d("AnswerActivity", "Message list cleared, List Size: ${messageList.size}")
                 true
             }
             R.id.action_repeat -> {
@@ -230,144 +245,171 @@ class AnswerActivity : AppCompatActivity() {
         }
     }
 
-    // Rest of the methods (animateFabRecordingStart, animateFabRecordingStop, etc.) remain unchanged
-    // Including startRecording, stopRecording, writeWavFile, sendAudioToApi, getChatResponse, textToSpeech, toggleAudioPlayback, playAudio, etc.
-
     private fun animateFabRecordingStart() {
-        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
-        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
-        )
-        scaleUp.duration = 200
-        scaleUp.start()
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+        try {
+            pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+            val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+                pushToTalkFab,
+                PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
+                PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
+            )
+            scaleUp.duration = 200
+            scaleUp.start()
+            pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in animateFabRecordingStart: ${e.message}", e)
+        }
     }
 
     private fun animateFabRecordingStop() {
-        pushToTalkFab.setImageResource(R.drawable.ic_mic)
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
-        )
-        scaleDown.duration = 200
-        scaleDown.start()
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
+        try {
+            pushToTalkFab.setImageResource(R.drawable.ic_mic)
+            val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
+                pushToTalkFab,
+                PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
+                PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
+            )
+            scaleDown.duration = 200
+            scaleDown.start()
+            pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in animateFabRecordingStop: ${e.message}", e)
+        }
     }
 
     private fun showMessageOptionsDialog(position: Int) {
-        if (position < 0 || position >= messageList.size) return
+        try {
+            if (position < 0 || position >= messageList.size) return
 
-        val message = messageList[position]
-        val options = arrayOf("Delete", "Share", "Copy")
-        AlertDialog.Builder(this)
-            .setTitle("Message Options")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> { // Delete
-                        messageList.removeAt(position)
-                        messageAdapter.notifyItemRemoved(position)
-                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
-                    }
-                    1 -> { // Share
-                        shareMessage(message)
-                    }
-                    2 -> { // Copy
-                        copyMessage(message)
-                    }
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun shareMessage(message: Message) {
-        val shareText = "${message.text}\n[${message.timestamp}]"
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, shareText)
-        }
-        startActivity(Intent.createChooser(shareIntent, "Share Message"))
-    }
-
-    private fun copyMessage(message: Message) {
-        val copyText = "${message.text}\n[${message.timestamp}]"
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Message", copyText)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun startRecording() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        audioRecord = AudioRecord(
-            AudioSource.MIC,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize
-        )
-
-        audioFile = File(cacheDir, "temp_audio.wav")
-        val audioBuffer = ByteArray(bufferSize)
-        val recordedData = mutableListOf<Byte>()
-
-        isRecording = true
-        recordingStartTime = System.currentTimeMillis()
-        audioRecord?.startRecording()
-
-        Thread {
-            try {
-                while (isRecording) {
-                    val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
-                    if (bytesRead > 0) {
-                        recordedData.addAll(audioBuffer.take(bytesRead))
-                        val rms = calculateRMS(audioBuffer, bytesRead)
-                        runOnUiThread {
-                            audioLevelBar.progress = (rms * 100).toInt().coerceIn(0, 100)
+            val message = messageList[position]
+            val options = arrayOf("Delete", "Share", "Copy")
+            AlertDialog.Builder(this)
+                .setTitle("Message Options")
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> { // Delete
+                            messageList.removeAt(position)
+                            messageAdapter.notifyItemRemoved(position)
+                            messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                            android.util.Log.d("AnswerActivity", "Message deleted at position: $position, List Size: ${messageList.size}")
+                        }
+                        1 -> { // Share
+                            shareMessage(message)
+                        }
+                        2 -> { // Copy
+                            copyMessage(message)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "Recording failed", Toast.LENGTH_SHORT).show()
-                }
-            } finally {
-                audioRecord?.stop()
-                audioRecord?.release()
-                audioRecord = null
-                val duration = System.currentTimeMillis() - recordingStartTime
-                if (duration >= MIN_RECORDING_DURATION_MS) {
-                    writeWavFile(recordedData.toByteArray())
-                    if (audioFile != null && audioFile!!.exists()) {
-                        sendAudioToApi(audioFile)
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this, "Recording too short, try again", Toast.LENGTH_SHORT).show()
-                    }
-                    audioFile?.delete()
-                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in showMessageOptionsDialog: ${e.message}", e)
+        }
+    }
+
+    private fun shareMessage(message: Message) {
+        try {
+            val shareText = "${message.text}\n[${message.timestamp}]"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, shareText)
             }
-        }.start()
+            startActivity(Intent.createChooser(shareIntent, "Share Message"))
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in shareMessage: ${e.message}", e)
+        }
+    }
+
+    private fun copyMessage(message: Message) {
+        try {
+            val copyText = "${message.text}\n[${message.timestamp}]"
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Message", copyText)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in copyMessage: ${e.message}", e)
+        }
+    }
+
+    private fun startRecording() {
+        try {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+            audioRecord = AudioRecord(
+                AudioSource.MIC,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                bufferSize
+            )
+
+            audioFile = File(cacheDir, "temp_audio.wav")
+            val audioBuffer = ByteArray(bufferSize)
+            val recordedData = mutableListOf<Byte>()
+
+            isRecording = true
+            recordingStartTime = System.currentTimeMillis()
+            audioRecord?.startRecording()
+
+            Thread {
+                try {
+                    while (isRecording) {
+                        val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
+                        if (bytesRead > 0) {
+                            recordedData.addAll(audioBuffer.take(bytesRead))
+                            val rms = calculateRMS(audioBuffer, bytesRead)
+                            runOnUiThread {
+                                audioLevelBar.progress = (rms * 100).toInt().coerceIn(0, 100)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    runOnUiThread {
+                        Toast.makeText(this, "Recording failed", Toast.LENGTH_SHORT).show()
+                    }
+                } finally {
+                    audioRecord?.stop()
+                    audioRecord?.release()
+                    audioRecord = null
+                    val duration = System.currentTimeMillis() - recordingStartTime
+                    if (duration >= MIN_RECORDING_DURATION_MS) {
+                        writeWavFile(recordedData.toByteArray())
+                        if (audioFile != null && audioFile!!.exists()) {
+                            sendAudioToApi(audioFile)
+                        }
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this, "Recording too short, try again", Toast.LENGTH_SHORT).show()
+                        }
+                        audioFile?.delete()
+                    }
+                }
+            }.start()
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in startRecording: ${e.message}", e)
+        }
     }
 
     private fun calculateRMS(buffer: ByteArray, bytesRead: Int): Float {
-        var sum = 0L
-        for (i in 0 until bytesRead step 2) {
-            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
-            sum += sample * sample
+        try {
+            var sum = 0L
+            for (i in 0 until bytesRead step 2) {
+                val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+                sum += sample * sample
+            }
+            val meanSquare = sum / (bytesRead / 2)
+            return (Math.sqrt(meanSquare.toDouble()) / 32768.0).toFloat()
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in calculateRMS: ${e.message}", e)
+            return 0f
         }
-        val meanSquare = sum / (bytesRead / 2)
-        return (Math.sqrt(meanSquare.toDouble()) / 32768.0).toFloat()
     }
 
     private fun stopRecording() {
@@ -375,8 +417,8 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun writeWavFile(pcmData: ByteArray) {
-        audioFile?.let { file ->
-            try {
+        try {
+            audioFile?.let { file ->
                 FileOutputStream(file).use { fos ->
                     val totalAudioLen = pcmData.size
                     val totalDataLen = totalAudioLen + 36
@@ -404,11 +446,11 @@ class AnswerActivity : AppCompatActivity() {
                     fos.write(header.array())
                     fos.write(pcmData)
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "Failed to save WAV file", Toast.LENGTH_SHORT).show()
-                }
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            runOnUiThread {
+                Toast.makeText(this, "Failed to save WAV file", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -444,35 +486,35 @@ class AnswerActivity : AppCompatActivity() {
             .build()
 
         Thread {
-            var attempts = 0
-            var success = false
-            var responseBody: String? = null
+            try {
+                var attempts = 0
+                var success = false
+                var responseBody: String? = null
 
-            while (attempts < maxRetries && !success) {
-                try {
-                    val response = client.newCall(request).execute()
-                    if (response.isSuccessful) {
-                        responseBody = response.body?.string()
-                        success = true
-                    } else {
+                while (attempts < maxRetries && !success) {
+                    try {
+                        val response = client.newCall(request).execute()
+                        if (response.isSuccessful) {
+                            responseBody = response.body?.string()
+                            success = true
+                        } else {
+                            attempts++
+                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                            runOnUiThread {
+                                Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: IOException) {
+                        e.printStackTrace()
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } catch (e: IOException) {
-                    e.printStackTrace()
-                    attempts++
-                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                    runOnUiThread {
-                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
-                    }
                 }
-            }
 
-            if (success && responseBody != null) {
-                try {
+                if (success && responseBody != null) {
                     val json = JSONObject(responseBody)
                     val voiceQueryText = json.optString("text", "")
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -481,7 +523,9 @@ class AnswerActivity : AppCompatActivity() {
                         val message = Message("Voice Query: $voiceQueryText", timestamp, true)
                         runOnUiThread {
                             messageList.add(message)
+                            android.util.Log.d("AnswerActivity", "Voice Query Added: ${message.text}, List Size: ${messageList.size}")
                             messageAdapter.notifyItemInserted(messageList.size - 1)
+                            messageAdapter.notifyDataSetChanged()
                             if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
                                 historyRecyclerView.scrollToPosition(messageList.size - 1)
                             }
@@ -494,15 +538,16 @@ class AnswerActivity : AppCompatActivity() {
                             progressBar.visibility = View.GONE
                         }
                     }
-                } catch (e: Exception) {
+                } else {
                     runOnUiThread {
-                        Toast.makeText(this, "Failed to parse transcription: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                         progressBar.visibility = View.GONE
                     }
                 }
-            } else {
+            } catch (e: Exception) {
+                android.util.Log.e("AnswerActivity", "Crash in sendAudioToApi: ${e.message}", e)
                 runOnUiThread {
-                    Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
                 }
             }
@@ -535,55 +580,69 @@ class AnswerActivity : AppCompatActivity() {
             .build()
 
         Thread {
-            var attempts = 0
-            var success = false
-            var responseBody: String? = null
+            try {
+                var attempts = 0
+                var success = false
+                var responseBody: String? = null
 
-            while (attempts < maxRetries && !success) {
-                try {
-                    val response = client.newCall(request).execute()
-                    if (response.isSuccessful) {
-                        responseBody = response.body?.string()
-                        success = true
-                    } else {
+                while (attempts < maxRetries && !success) {
+                    try {
+                        val response = client.newCall(request).execute()
+                        if (response.isSuccessful) {
+                            responseBody = response.body?.string()
+                            success = true
+                        } else {
+                            attempts++
+                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                            runOnUiThread {
+                                Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: IOException) {
+                        e.printStackTrace()
                         attempts++
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
-                            Toast.makeText(this, "Chat API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } catch (e: IOException) {
-                    e.printStackTrace()
-                    attempts++
-                    if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                    runOnUiThread {
-                        Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
-                    }
                 }
-            }
 
-            responseBody?.let {
-                val json = JSONObject(it)
-                val answerText = json.getString("response")
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Answer: $answerText", timestamp, false)
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
-                        historyRecyclerView.scrollToPosition(messageList.size - 1)
+                responseBody?.let {
+                    val json = JSONObject(it)
+                    val answerText = json.getString("response")
+                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    val message = Message("Answer: $answerText", timestamp, false)
+                    runOnUiThread {
+                        messageList.add(message)
+                        android.util.Log.d("AnswerActivity", "Chat Response Added: ${message.text}, List Size: ${messageList.size}")
+                        messageAdapter.notifyItemInserted(messageList.size - 1)
+                        messageAdapter.notifyDataSetChanged()
+                        if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
+                            historyRecyclerView.scrollToPosition(messageList.size - 1)
+                        }
+                        progressBar.visibility = View.GONE
+                        textToSpeech(answerText, message)
                     }
+                } ?: runOnUiThread {
+                    Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                     progressBar.visibility = View.GONE
-                    textToSpeech(answerText, message)
                 }
-            } ?: runOnUiThread {
-                Toast.makeText(this, "Answer failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
-                progressBar.visibility = View.GONE
+            } catch (e: Exception) {
+                android.util.Log.e("AnswerActivity", "Crash in getChatResponse: ${e.message}", e)
+                runOnUiThread {
+                    Toast.makeText(this, "Chat response error: ${e.message}", Toast.LENGTH_LONG).show()
+                    progressBar.visibility = View.GONE
+                }
             }
         }.start()
     }
 
     private fun textToSpeech(text: String, message: Message) {
+        // Temporarily disabled to isolate crash issues - uncomment to re-enable after testing
+        return
+
+        /*
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!prefs.getBoolean("tts_enabled", false)) return
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
@@ -623,29 +682,35 @@ class AnswerActivity : AppCompatActivity() {
                 if (response.isSuccessful) {
                     val audioBytes = response.body?.bytes()
                     runOnUiThread {
-                        if (audioBytes != null && audioBytes.isNotEmpty()) {
-                            val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
-                            FileOutputStream(audioFile).use { fos ->
-                                fos.write(audioBytes)
-                            }
-                            if (audioFile.exists() && audioFile.length() > 0) {
-                                message.audioFile = audioFile
-                                ttsProgressBar.visibility = View.GONE
-                                val messageIndex = messageList.indexOf(message)
-                                if (messageIndex != -1) {
-                                    messageAdapter.notifyItemChanged(messageIndex)
-                                    android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
+                        try {
+                            if (audioBytes != null && audioBytes.isNotEmpty()) {
+                                val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                                FileOutputStream(audioFile).use { fos ->
+                                    fos.write(audioBytes)
                                 }
-                                if (autoPlay) {
-                                    playAudio(audioFile)
+                                if (audioFile.exists() && audioFile.length() > 0) {
+                                    message.audioFile = audioFile
+                                    ttsProgressBar.visibility = View.GONE
+                                    val messageIndex = messageList.indexOf(message)
+                                    if (messageIndex != -1) {
+                                        messageAdapter.notifyItemChanged(messageIndex)
+                                        android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
+                                    }
+                                    if (autoPlay) {
+                                        playAudio(audioFile)
+                                    }
+                                } else {
+                                    ttsProgressBar.visibility = View.GONE
+                                    Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
                                 ttsProgressBar.visibility = View.GONE
-                                Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
                             }
-                        } else {
+                        } catch (e: Exception) {
+                            android.util.Log.e("AnswerActivity", "Crash in textToSpeech UI update: ${e.message}", e)
                             ttsProgressBar.visibility = View.GONE
-                            Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "TTS UI error: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                     }
                 } else {
@@ -655,25 +720,31 @@ class AnswerActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: IOException) {
+                android.util.Log.e("AnswerActivity", "Crash in textToSpeech network call: ${e.message}", e)
                 runOnUiThread {
                     ttsProgressBar.visibility = View.GONE
                     Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
+        */
     }
 
     private fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        message.audioFile?.let { audioFile ->
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-                mediaPlayer = null
-                button.setImageResource(android.R.drawable.ic_media_play)
-            } else {
-                playAudio(audioFile)
-                button.setImageResource(R.drawable.ic_media_stop)
+        try {
+            message.audioFile?.let { audioFile ->
+                if (mediaPlayer?.isPlaying == true) {
+                    mediaPlayer?.stop()
+                    mediaPlayer?.release()
+                    mediaPlayer = null
+                    button.setImageResource(android.R.drawable.ic_media_play)
+                } else {
+                    playAudio(audioFile)
+                    button.setImageResource(R.drawable.ic_media_stop)
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in toggleAudioPlayback: ${e.message}", e)
         }
     }
 
@@ -717,6 +788,7 @@ class AnswerActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
+            android.util.Log.e("AnswerActivity", "Crash in playAudio: ${e.message}", e)
             runOnUiThread {
                 Toast.makeText(this, "Audio playback failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
@@ -775,36 +847,49 @@ class AnswerActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-            val message = messages[position]
-            holder.messageText.text = message.text
-            holder.timestampText.text = message.timestamp
+            try {
+                val message = messages[position]
+                holder.messageText.text = message.text
+                holder.timestampText.text = message.timestamp
+                android.util.Log.d("MessageAdapter", "Binding message at position $position: ${message.text}")
 
-            val layoutParams = holder.messageContainer.layoutParams as LinearLayout.LayoutParams
-            layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
-            holder.messageContainer.layoutParams = layoutParams
+                val layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
+                holder.messageContainer.layoutParams = layoutParams
 
-            holder.messageContainer.isActivated = !message.isQuery
+                holder.messageContainer.isActivated = !message.isQuery
 
-            if (!message.isQuery && message.audioFile != null) {
-                holder.audioControlButton.visibility = View.VISIBLE
-                holder.audioControlButton.setOnClickListener {
-                    onAudioControlClick(message, holder.audioControlButton)
+                if (!message.isQuery && message.audioFile != null) {
+                    holder.audioControlButton.visibility = View.VISIBLE
+                    holder.audioControlButton.setOnClickListener {
+                        onAudioControlClick(message, holder.audioControlButton)
+                    }
+                    android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
+                } else {
+                    holder.audioControlButton.visibility = View.GONE
+                    android.util.Log.d("MessageAdapter", "Hiding audio button for message: ${message.text}")
                 }
-                android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
-            } else {
-                holder.audioControlButton.visibility = View.GONE
-                android.util.Log.d("MessageAdapter", "Hiding audio button for message: ${message.text}")
-            }
 
-            val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
-            holder.itemView.startAnimation(animation)
+                val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+                holder.itemView.startAnimation(animation)
 
-            holder.itemView.setOnLongClickListener {
-                onLongClick(position)
-                true
+                holder.itemView.setOnLongClickListener {
+                    onLongClick(position)
+                    true
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MessageAdapter", "Crash in onBindViewHolder at position $position: ${e.message}", e)
+                throw e
             }
         }
 
-        override fun getItemCount(): Int = messages.size
+        override fun getItemCount(): Int {
+            val count = messages.size
+            android.util.Log.d("MessageAdapter", "getItemCount called, returning: $count")
+            return count
+        }
     }
 }

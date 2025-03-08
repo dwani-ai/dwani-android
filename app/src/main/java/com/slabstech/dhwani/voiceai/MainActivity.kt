@@ -40,6 +40,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.koin.androidx.viewmodel.ext.android.viewModel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -73,6 +74,8 @@ class MainActivity : AppCompatActivity() {
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
 
+    private val viewModel: MainViewModel by viewModel()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -101,6 +104,23 @@ class MainActivity : AppCompatActivity() {
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
+        }
+
+        // Observe messages LiveData
+        viewModel.messages.observe(this) { messages ->
+            messageAdapter.updateMessages(messages.toMutableList())
+            if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
+                historyRecyclerView.scrollToPosition(messages.size - 1)
+            }
+        }
+
+        // Observe recording state
+        viewModel.isRecording.observe(this) { isRecording ->
+            if (isRecording) {
+                animateFabRecordingStart()
+            } else {
+                animateFabRecordingStop()
+            }
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -163,19 +183,18 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.action_clear -> {
-                messageList.clear()
-                lastQuery = null
-                messageAdapter.notifyDataSetChanged()
+                viewModel.clearMessages()
                 true
             }
             R.id.action_repeat -> {
-                lastQuery?.let { getChatResponse(it) }
-                    ?: Toast.makeText(this, "No previous query to repeat", Toast.LENGTH_SHORT).show()
+                // TODO: Implement repeat with ViewModel
+                Toast.makeText(this, "Repeat not implemented yet", Toast.LENGTH_SHORT).show()
                 true
             }
             R.id.action_share -> {
-                if (messageList.isNotEmpty()) {
-                    shareMessage(messageList.last())
+                val lastMessage = viewModel.messages.value?.lastOrNull()
+                if (lastMessage != null) {
+                    shareMessage(lastMessage)
                 } else {
                     Toast.makeText(this, "No messages to share", Toast.LENGTH_SHORT).show()
                 }
@@ -617,8 +636,6 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-data class Message(val text: String, val timestamp: String, val isQuery: Boolean)
-
 class MessageAdapter(
     private val messages: MutableList<Message>,
     private val onLongClick: (Int) -> Unit,
@@ -663,4 +680,12 @@ class MessageAdapter(
     }
 
     override fun getItemCount(): Int = messages.size
+
+    fun updateMessages(newMessages: MutableList<Message>) {
+        messages.clear()
+        messages.addAll(newMessages)
+        notifyDataSetChanged()
+    }
 }
+
+data class Message(val text: String, val timestamp: String, val isQuery: Boolean)

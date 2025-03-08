@@ -567,9 +567,10 @@ class MainActivity : AppCompatActivity() {
     private fun textToSpeech(text: String, message: Message) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!prefs.getBoolean("tts_enabled", true)) return
-        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true) // Check auto-play setting
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
 
-        val voice = prefs.getString("tts_voice", "kannada-female") ?: "kannada-female"
+        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
+            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
         val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
         val apiKey = "your-new-secret-api-key"
 
@@ -582,7 +583,7 @@ class MainActivity : AppCompatActivity() {
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().apply {
             put("input", text)
-            put("voice", voice)
+            put("voice", voice) // Uses the full description (e.g., "Anu speaks...")
             put("model", "ai4bharat/indic-parler-tts")
             put("response_format", "mp3")
             put("speed", 1.0)
@@ -617,7 +618,7 @@ class MainActivity : AppCompatActivity() {
                                     android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
                                 }
                                 if (autoPlay) {
-                                    playAudio(audioFile) // Only play if auto-play is enabled
+                                    playAudio(audioFile)
                                 }
                             } else {
                                 ttsProgressBar.visibility = View.GONE

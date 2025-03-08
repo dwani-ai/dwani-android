@@ -46,4 +46,12 @@
         android:key="test_endpoints"
         android:title="Test Endpoints"
         android:summary="Check if the API endpoints are reachable"/>
+
+    <ListPreference
+        android:key="tts_voice"
+        android:title="TTS Voice"
+        android:defaultValue="Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+        android:entries="@array/tts_voice_options"
+        android:entryValues="@array/tts_voice_values"
+        android:summary="Select the voice for text-to-speech"/>
 </PreferenceScreen>

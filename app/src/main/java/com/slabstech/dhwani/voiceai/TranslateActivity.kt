@@ -543,9 +543,38 @@ class TranslateActivity : AppCompatActivity() {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
+        // Split input into sentences of 15 words or fewer
+        val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
+        val sentences = mutableListOf<String>()
+        var currentSentence = mutableListOf<String>()
+        var wordCount = 0
+
+        for (word in words) {
+            if (wordCount + 1 > 15 && currentSentence.isNotEmpty()) {
+                sentences.add(currentSentence.joinToString(" "))
+                currentSentence = mutableListOf()
+                wordCount = 0
+            }
+            currentSentence.add(word)
+            wordCount++
+            // If the word ends with a sentence-ending punctuation, split here
+            if (word.endsWith('.') || word.endsWith('!') || word.endsWith('?')) {
+                sentences.add(currentSentence.joinToString(" "))
+                currentSentence = mutableListOf()
+                wordCount = 0
+            }
+        }
+        if (currentSentence.isNotEmpty()) {
+            sentences.add(currentSentence.joinToString(" "))
+        }
+
+        android.util.Log.d("TranslateActivity", "Split sentences: $sentences")
+
         val jsonMediaType = "application/json".toMediaType()
         val requestBody = JSONObject().apply {
-            put("sentences", JSONArray().put(input))
+            val sentencesArray = JSONArray()
+            sentences.forEach { sentencesArray.put(it) }
+            put("sentences", sentencesArray)
             put("src_lang", srcLang)
             put("tgt_lang", tgtLang)
         }.toString().toRequestBody(jsonMediaType)
@@ -585,7 +614,7 @@ class TranslateActivity : AppCompatActivity() {
                 if (success && responseBody != null) {
                     val json = JSONObject(responseBody)
                     val translations = json.getJSONArray("translations")
-                    val translatedText = translations.getString(0) // Direct string access
+                    val translatedText = (0 until translations.length()).joinToString("\n") { translations.getString(it) }
                     android.util.Log.d("TranslateActivity", "Parsed Translation: $translatedText")
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                     val message = Message("Translation: $translatedText", timestamp, false)

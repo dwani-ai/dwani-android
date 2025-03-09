@@ -52,6 +52,7 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import android.media.MediaPlayer
+import android.text.Editable
 import java.io.FileInputStream
 
 class AnswerActivity : AppCompatActivity() {
@@ -174,16 +175,44 @@ class AnswerActivity : AppCompatActivity() {
                 }
             }
 
+
+            textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    if (s.isNullOrEmpty()) {
+                        sendButton.visibility = View.GONE
+                        pushToTalkFab.visibility = View.VISIBLE
+                    } else {
+                        sendButton.visibility = View.VISIBLE
+                        pushToTalkFab.visibility = View.GONE
+                    }
+                }
+            })
+
+
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
                     R.id.nav_answer -> true
                     R.id.nav_translate -> {
-                        startActivity(Intent(this, TranslateActivity::class.java))
-                        true
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Translate?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, TranslateActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
                     }
                     R.id.nav_docs -> {
-                        startActivity(Intent(this, DocsActivity::class.java))
-                        true
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Docs?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, DocsActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
                     }
                     else -> false
                 }

@@ -156,7 +156,8 @@ class AnswerActivity : AppCompatActivity() {
                         val message = Message("Query: $query", timestamp, true)
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
-                        scrollToLatestMessage() // Call helper method
+                        historyRecyclerView.requestLayout() // Force layout update
+                        scrollToLatestMessage()
                         getChatResponse(query)
                         textQueryInput.text.clear()
                     } else {
@@ -218,6 +219,7 @@ class AnswerActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        menu.findItem(R.id.action_auto_scroll)?.isChecked = true // Enable by default
         return true
     }
 
@@ -544,11 +546,12 @@ class AnswerActivity : AppCompatActivity() {
                         runOnUiThread {
                             messageList.add(message)
                             messageAdapter.notifyItemInserted(messageList.size - 1)
-                            scrollToLatestMessage() // Call helper method
+                            historyRecyclerView.requestLayout() // Force layout update
+                            scrollToLatestMessage()
                             progressBar.visibility = View.GONE
                         }
                         getChatResponse(voiceQueryText)
-                    } else {
+                    }  else {
                         runOnUiThread {
                             Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
                             progressBar.visibility = View.GONE
@@ -649,7 +652,8 @@ class AnswerActivity : AppCompatActivity() {
                     runOnUiThread {
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
-                        scrollToLatestMessage() // Call helper method
+                        historyRecyclerView.requestLayout() // Force layout update
+                        scrollToLatestMessage()
                         progressBar.visibility = View.GONE
                         textToSpeech(answerText, message)
                     }
@@ -669,9 +673,9 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun textToSpeech(text: String, message: Message) {
         // Temporarily disabled to isolate crash issues - uncomment to re-enable after testing
-        return
+        //return
 
-        /*
+
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!prefs.getBoolean("tts_enabled", false)) return
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
@@ -756,7 +760,7 @@ class AnswerActivity : AppCompatActivity() {
                 }
             }
         }.start()
-        */
+
     }
 
     private fun toggleAudioPlayback(message: Message, button: ImageButton) {

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#FFFFFF">
+
+    <TextView
+        android:id="@+id/option_answer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Answer"
+        android:textSize="18sp"
+        android:textColor="#000000"
+        android:padding="12dp"
+        android:background="?android:attr/selectableItemBackground"/>
+
+    <TextView
+        android:id="@+id/option_translate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Translate"
+        android:textSize="18sp"
+        android:textColor="#000000"
+        android:padding="12dp"
+        android:background="?android:attr/selectableItemBackground"/>
+
+    <TextView
+        android:id="@+id/option_docs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Docs"
+        android:textSize="18sp"
+        android:textColor="#000000"
+        android:padding="12dp"
+        android:background="?android:attr/selectableItemBackground"/>
+</LinearLayout>

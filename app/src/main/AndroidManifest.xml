@@ -34,5 +34,8 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".MainActivity" />
         </activity>
+        <activity android:name=".AnswerActivity" />
+        <activity android:name=".TranslateActivity" />
+        <activity android:name=".DocsActivity" />
     </application>
 </manifest>

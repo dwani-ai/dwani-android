@@ -38,9 +38,9 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         android:layout_marginTop="24dp"
-    android:layout_marginBottom="120dp"
-    android:padding="8dp"
-    android:clipToPadding="false"/>
+        android:layout_marginBottom="120dp"
+        android:padding="8dp"
+        android:clipToPadding="false"/>
 
     <LinearLayout
         android:id="@+id/bottomBar"

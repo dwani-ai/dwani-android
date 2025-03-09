@@ -119,8 +119,7 @@ class AnswerActivity : AppCompatActivity() {
                 layoutManager = LinearLayoutManager(this@AnswerActivity)
                 adapter = messageAdapter
                 visibility = View.VISIBLE
-                setBackgroundColor(ContextCompat.getColor(this@AnswerActivity, android.R.color.white))
-
+                setBackgroundColor(ContextCompat.getColor(this@AnswerActivity, android.R.color.transparent))
             }
             android.util.Log.d("AnswerActivity", "RecyclerView initialized, Adapter item count: ${messageAdapter.itemCount}")
 

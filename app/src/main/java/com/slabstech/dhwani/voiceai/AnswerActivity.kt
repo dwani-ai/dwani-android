@@ -120,10 +120,7 @@ class AnswerActivity : AppCompatActivity() {
                 adapter = messageAdapter
                 visibility = View.VISIBLE
                 setBackgroundColor(ContextCompat.getColor(this@AnswerActivity, android.R.color.white))
-                layoutParams = CoordinatorLayout.LayoutParams(CoordinatorLayout.LayoutParams.MATCH_PARENT, CoordinatorLayout.LayoutParams.MATCH_PARENT).apply {
-                    behavior = AppBarLayout.ScrollingViewBehavior()
-                    setMargins(0, 0, 0, 150) // Space for bottom navigation
-                }
+
             }
             android.util.Log.d("AnswerActivity", "RecyclerView initialized, Adapter item count: ${messageAdapter.itemCount}")
 
@@ -158,12 +155,8 @@ class AnswerActivity : AppCompatActivity() {
                         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                         val message = Message("Query: $query", timestamp, true)
                         messageList.add(message)
-                        android.util.Log.d("AnswerActivity", "Text Query Added: ${message.text}, List Size: ${messageList.size}")
                         messageAdapter.notifyItemInserted(messageList.size - 1)
-                        messageAdapter.notifyDataSetChanged()
-                        if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
-                            historyRecyclerView.scrollToPosition(messageList.size - 1)
-                        }
+                        scrollToLatestMessage() // Call helper method
                         getChatResponse(query)
                         textQueryInput.text.clear()
                     } else {
@@ -171,10 +164,8 @@ class AnswerActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("AnswerActivity", "Crash in sendButton click: ${e.message}", e)
-                    Toast.makeText(this, "Error sending query: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
-
 
             textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -552,12 +543,8 @@ class AnswerActivity : AppCompatActivity() {
                         val message = Message("Voice Query: $voiceQueryText", timestamp, true)
                         runOnUiThread {
                             messageList.add(message)
-                            android.util.Log.d("AnswerActivity", "Voice Query Added: ${message.text}, List Size: ${messageList.size}")
                             messageAdapter.notifyItemInserted(messageList.size - 1)
-                            messageAdapter.notifyDataSetChanged()
-                            if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
-                                historyRecyclerView.scrollToPosition(messageList.size - 1)
-                            }
+                            scrollToLatestMessage() // Call helper method
                             progressBar.visibility = View.GONE
                         }
                         getChatResponse(voiceQueryText)
@@ -584,6 +571,23 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private var mediaPlayer: MediaPlayer? = null
+
+    private fun scrollToLatestMessage() {
+        val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
+        if (autoScrollEnabled && messageList.isNotEmpty()) {
+            historyRecyclerView.post {
+                val itemCount = messageAdapter.itemCount
+                if (itemCount > 0) {
+                    historyRecyclerView.smoothScrollToPosition(itemCount - 1)
+                    android.util.Log.d("AnswerActivity", "Scrolled to position: ${itemCount - 1}")
+                } else {
+                    android.util.Log.w("AnswerActivity", "No items to scroll to")
+                }
+            }
+        } else {
+            android.util.Log.d("AnswerActivity", "Auto-scroll disabled or message list empty")
+        }
+    }
 
     private fun getChatResponse(prompt: String) {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
@@ -644,12 +648,8 @@ class AnswerActivity : AppCompatActivity() {
                     val message = Message("Answer: $answerText", timestamp, false)
                     runOnUiThread {
                         messageList.add(message)
-                        android.util.Log.d("AnswerActivity", "Chat Response Added: ${message.text}, List Size: ${messageList.size}")
                         messageAdapter.notifyItemInserted(messageList.size - 1)
-                        messageAdapter.notifyDataSetChanged()
-                        if (toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked == true) {
-                            historyRecyclerView.scrollToPosition(messageList.size - 1)
-                        }
+                        scrollToLatestMessage() // Call helper method
                         progressBar.visibility = View.GONE
                         textToSpeech(answerText, message)
                     }

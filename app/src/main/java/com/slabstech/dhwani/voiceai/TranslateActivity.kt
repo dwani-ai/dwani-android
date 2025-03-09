@@ -535,7 +535,7 @@ class TranslateActivity : AppCompatActivity() {
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val translateApiEndpoint = "https://gaganyatri-translate-indic-server-cpu.hf.space/translate?src_lang=$srcLang&tgt_lang=$tgtLang&device_type=cpu"
+        val translateApiEndpoint = "https://gaganyatri-translate-indic-server-cpu.hf.space/translate?src_lang=$srcLang&tgt_lang=$tgtLang"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -568,13 +568,16 @@ class TranslateActivity : AppCompatActivity() {
                         val response = client.newCall(request).execute()
                         if (response.isSuccessful) {
                             responseBody = response.body?.string()
+                            android.util.Log.d("TranslateActivity", "Raw API Response: $responseBody")
                             success = true
                         } else {
                             attempts++
+                            android.util.Log.w("TranslateActivity", "API failed with code: ${response.code}")
                             if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         }
                     } catch (e: IOException) {
                         attempts++
+                        android.util.Log.e("TranslateActivity", "Network error: ${e.message}")
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                     }
                 }
@@ -582,7 +585,8 @@ class TranslateActivity : AppCompatActivity() {
                 if (success && responseBody != null) {
                     val json = JSONObject(responseBody)
                     val translations = json.getJSONArray("translations")
-                    val translatedText = translations.getJSONObject(0).getString("tgt_text")
+                    val translatedText = translations.getString(0) // Direct string access
+                    android.util.Log.d("TranslateActivity", "Parsed Translation: $translatedText")
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                     val message = Message("Translation: $translatedText", timestamp, false)
                     runOnUiThread {
@@ -594,11 +598,12 @@ class TranslateActivity : AppCompatActivity() {
                     }
                 } else {
                     runOnUiThread {
-                        Toast.makeText(this, "Translation failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Translation failed after $maxRetries retries. Check network or API status.", Toast.LENGTH_SHORT).show()
                         progressBar.visibility = View.GONE
                     }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("TranslateActivity", "Translation parsing error: ${e.message}", e)
                 runOnUiThread {
                     Toast.makeText(this, "Translation error: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
@@ -606,7 +611,6 @@ class TranslateActivity : AppCompatActivity() {
             }
         }.start()
     }
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

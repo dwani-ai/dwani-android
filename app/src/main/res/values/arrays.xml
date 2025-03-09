@@ -20,4 +20,16 @@
         <item>Suresh  speaks at a moderate pace with a slightly monotone tone. The recording is clear, with a close sound and only minimal ambient noise.</item>
         <!-- Match API voice values -->
     </string-array>
+        <string-array name="target_languages">
+            <item>English (eng_Latn)</item>
+            <item>Hindi (hin_Deva)</item>
+            <item>Kannada (kan_Knda)</item>
+            <item>Tamil (tam_Taml)</item>
+        </string-array>
+        <string-array name="target_language_codes">
+            <item>eng_Latn</item>
+            <item>hin_Deva</item>
+            <item>kan_Knda</item>
+            <item>tam_Taml</item>
+        </string-array>
 </resources>

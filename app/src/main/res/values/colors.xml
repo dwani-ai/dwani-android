@@ -2,7 +2,9 @@
 <resources>
     <color name="whatsapp_green">#075E54</color>
     <color name="whatsapp_background">#ECE5DD</color>
+    <color name="whatsapp_message_out">#DCF8C6</color>
+    <color name="whatsapp_message_in">#FFFFFF</color>
     <color name="whatsapp_input_background">#FFFFFF</color>
-    <color name="whatsapp_message_out">#DCF8C6</color> <!-- Outgoing (queries) -->
-    <color name="whatsapp_message_in">#FFFFFF</color>  <!-- Incoming (responses) -->
+    <color name="whatsapp_text">#000000</color>
+    <color name="whatsapp_timestamp">#666666</color>
 </resources>

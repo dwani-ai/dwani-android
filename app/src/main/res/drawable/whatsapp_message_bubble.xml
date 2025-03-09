@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="12dp"/> <!-- WhatsApp-style rounded corners -->
-    <solid android:color="@android:color/transparent"/> <!-- Color set dynamically -->
+    <corners android:radius="12dp"/>
+    <!-- Remove solid color here; set dynamically in code -->
 </shape>

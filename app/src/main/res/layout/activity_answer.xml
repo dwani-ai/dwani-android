@@ -6,13 +6,11 @@
     android:layout_height="match_parent"
     android:background="@color/whatsapp_background">
 
-    <!-- App Bar -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/whatsapp_green">
-
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
@@ -22,7 +20,6 @@
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Audio Level Indicator -->
     <ProgressBar
         android:id="@+id/audioLevelBar"
         style="?android:attr/progressBarStyleHorizontal"
@@ -30,13 +27,11 @@
         android:layout_height="8dp"
         android:max="100"
         android:progress="0"
-        android:progressTint="#075E54"
+        android:progressTint="@color/whatsapp_green"
         android:background="#D0C8B8"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        android:layout_marginTop="8dp"
         android:layout_margin="8dp"/>
 
-    <!-- RecyclerView for Messages -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/historyRecyclerView"
         android:layout_width="match_parent"
@@ -47,14 +42,13 @@
         android:padding="8dp"
         android:clipToPadding="false"/>
 
-    <!-- Bottom Input Bar -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#FFFFFF"
+        android:background="@color/whatsapp_input_background"
         android:elevation="4dp"
         android:padding="8dp"
         app:layout_dodgeInsetEdges="bottom"
@@ -68,6 +62,7 @@
             android:layout_weight="1"
             android:hint="Type a message..."
             android:textSize="16sp"
+            android:textColor="@color/whatsapp_text"
             android:background="@drawable/whatsapp_input_background"
             android:padding="8dp"
             android:layout_marginEnd="8dp"/>
@@ -79,8 +74,7 @@
             android:src="@drawable/ic_send"
             android:contentDescription="Send"
             android:background="@android:color/transparent"
-            android:tint="@color/whatsapp_green"
-            android:layout_marginEnd="8dp"/>
+            android:tint="@color/whatsapp_green"/>
 
         <ProgressBar
             android:id="@+id/ttsProgressBar"
@@ -88,7 +82,7 @@
             android:layout_height="24dp"
             android:visibility="gone"
             android:layout_marginEnd="8dp"
-            android:indeterminateTint="@color/whatsapp_green" />
+            android:indeterminateTint="@color/whatsapp_green"/>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/pushToTalkFab"
@@ -97,27 +91,25 @@
             android:src="@drawable/ic_mic"
             android:contentDescription="Push to Talk"
             app:backgroundTint="@color/whatsapp_green"
-            app:tint="#FFFFFF"
-            android:layout_gravity="center_vertical"/>
+            app:tint="#FFFFFF"/>
     </LinearLayout>
 
-    <!-- Bottom Navigation Bar -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="#FFFFFF"
+        android:background="@color/whatsapp_input_background"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@color/whatsapp_green"
         app:itemTextColor="@color/whatsapp_green"
         app:labelVisibilityMode="labeled"/>
 
-    <!-- ProgressBar for API calls -->
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        android:layout_gravity="center"/>
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/whatsapp_green"/>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

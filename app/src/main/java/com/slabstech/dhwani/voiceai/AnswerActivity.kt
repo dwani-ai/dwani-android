@@ -851,7 +851,6 @@ class AnswerActivity : AppCompatActivity() {
                 val message = messages[position]
                 holder.messageText.text = message.text
                 holder.timestampText.text = message.timestamp
-                android.util.Log.d("MessageAdapter", "Binding message at position $position: ${message.text}")
 
                 val layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -860,18 +859,16 @@ class AnswerActivity : AppCompatActivity() {
                 layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
                 holder.messageContainer.layoutParams = layoutParams
 
-                // Set WhatsApp-style colors directly
                 val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)
                 backgroundDrawable?.let {
-                    if (message.isQuery) {
-                        it.setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_message_out)) // #DCF8C6
-                    } else {
-                        it.setTint(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_message_in)) // #FFFFFF
-                    }
+                    it.setTint(ContextCompat.getColor(
+                        holder.itemView.context,
+                        if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
+                    ))
                     holder.messageText.background = it
                 }
-                holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
-                holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
+                holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
+                holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
 
                 if (!message.isQuery && message.audioFile != null) {
                     holder.audioControlButton.visibility = View.VISIBLE
@@ -879,10 +876,8 @@ class AnswerActivity : AppCompatActivity() {
                         onAudioControlClick(message, holder.audioControlButton)
                     }
                     holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
-                    android.util.Log.d("MessageAdapter", "Showing audio button for message: ${message.text}")
                 } else {
                     holder.audioControlButton.visibility = View.GONE
-                    android.util.Log.d("MessageAdapter", "Hiding audio button for message: ${message.text}")
                 }
 
                 val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
@@ -894,7 +889,6 @@ class AnswerActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("MessageAdapter", "Crash in onBindViewHolder at position $position: ${e.message}", e)
-                throw e
             }
         }
 

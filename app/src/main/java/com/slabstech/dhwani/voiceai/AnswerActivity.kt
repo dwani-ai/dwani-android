@@ -888,14 +888,19 @@ class AnswerActivity : AppCompatActivity() {
                 layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
                 holder.messageContainer.layoutParams = layoutParams
 
-                val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)
+                // Apply the bubble background and tint
+                val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)?.mutate()
                 backgroundDrawable?.let {
                     it.setTint(ContextCompat.getColor(
                         holder.itemView.context,
                         if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
                     ))
                     holder.messageText.background = it
+                    // Add slight elevation or padding to make white visible against beige background
+                    holder.messageText.elevation = 2f // Optional: adds shadow for contrast
+                    holder.messageText.setPadding(16, 16, 16, 16) // Adjust padding for WhatsApp-like spacing
                 }
+
                 holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
                 holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
 
@@ -920,7 +925,6 @@ class AnswerActivity : AppCompatActivity() {
                 android.util.Log.e("MessageAdapter", "Crash in onBindViewHolder at position $position: ${e.message}", e)
             }
         }
-
         override fun getItemCount(): Int {
             val count = messages.size
             android.util.Log.d("MessageAdapter", "getItemCount called, returning: $count")

@@ -91,7 +91,6 @@ class TranslateActivity : AppCompatActivity() {
             pushToTalkFab = findViewById(R.id.pushToTalkFab)
             textQueryInput = findViewById(R.id.textQueryInput)
             sendButton = findViewById(R.id.sendButton)
-            targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
             toolbar = findViewById(R.id.toolbar)
             val bottomNavigation = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
 
@@ -107,15 +106,6 @@ class TranslateActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@TranslateActivity, android.R.color.transparent))
             }
             android.util.Log.d("TranslateActivity", "RecyclerView initialized, Adapter item count: ${messageAdapter.itemCount}")
-
-            // Setup Spinner
-            val adapter = ArrayAdapter.createFromResource(
-                this,
-                R.array.target_languages,
-                android.R.layout.simple_spinner_item
-            )
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            targetLanguageSpinner.adapter = adapter
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
@@ -212,6 +202,19 @@ class TranslateActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         menu.findItem(R.id.action_auto_scroll)?.isChecked = true
+
+        // Setup Spinner in Toolbar
+        val targetLanguageItem = menu.findItem(R.id.action_target_language)
+        targetLanguageSpinner = targetLanguageItem.actionView as Spinner
+        val adapter = ArrayAdapter.createFromResource(
+            this,
+            R.array.target_languages,
+            android.R.layout.simple_spinner_item
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        targetLanguageSpinner.adapter = adapter
+        targetLanguageSpinner.setSelection(0) // Default to English
+
         return true
     }
 

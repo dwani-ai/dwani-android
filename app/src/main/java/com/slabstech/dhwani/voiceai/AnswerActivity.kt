@@ -596,7 +596,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/chat"
         val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -681,7 +681,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
+        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/audio/speech"
         val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()

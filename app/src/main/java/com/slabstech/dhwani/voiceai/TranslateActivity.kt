@@ -535,7 +535,7 @@ class TranslateActivity : AppCompatActivity() {
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val translateApiEndpoint = "https://gaganyatri-translate-indic-server-cpu.hf.space/translate?src_lang=$srcLang&tgt_lang=$tgtLang"
+        val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/translate?src_lang=$srcLang&tgt_lang=$tgtLang"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

@@ -44,16 +44,39 @@
         <EditTextPreference
             android:key="transcription_api_endpoint"
             android:title="Transcription API Endpoint"
-            android:defaultValue="https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/transcribe/"
             android:inputType="textUri"
             android:summary="Set the URL for the transcription API"/>
 
         <EditTextPreference
             android:key="chat_api_endpoint"
             android:title="Chat API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/chat"
             android:inputType="textUri"
             android:summary="Set the URL for the chat API"/>
+
+        <EditTextPreference
+            android:key="translate_api_endpoint"
+            android:title="Translate API Endpoint"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/translate"
+            android:inputType="textUri"
+            android:summary="Set the URL for the chat API"/>
+
+        <EditTextPreference
+            android:key="vlm_api_endpoint"
+            android:title="Image API Endpoint"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/caption"
+            android:inputType="textUri"
+            android:summary="Set the URL for the chat API"/>
+
+
+        <EditTextPreference
+            android:key="tts_api_endpoint"
+            android:title="Text to Speech API Endpoint"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/audio/speech"
+            android:inputType="textUri"
+            android:summary="Set the URL for the chat API"/>
+
 
         <EditTextPreference
             android:key="chat_api_key"

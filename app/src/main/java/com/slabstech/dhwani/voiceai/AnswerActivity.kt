@@ -488,7 +488,7 @@ class AnswerActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada" // Default to kannada as per curl
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/transcribe" // Hardcode to match curl
+        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe" // Hardcode to match curl
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()
@@ -609,7 +609,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/chat"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat"
         val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

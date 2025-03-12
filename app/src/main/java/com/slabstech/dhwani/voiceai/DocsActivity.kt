@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
@@ -16,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -42,7 +44,6 @@ import java.util.concurrent.TimeUnit
 
 class DocsActivity : AppCompatActivity() {
 
-    private val PICK_IMAGE_REQUEST = 101
     private val STORAGE_PERMISSION_CODE = 102
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var audioLevelBar: ProgressBar
@@ -55,6 +56,14 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/docs"
     private val RETRY_DELAY_MS = 2000L
+
+    // Activity Result Launcher for photo picker or legacy picker
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val imageUri = result.data?.data
+            imageUri?.let { processImage(it) }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -87,7 +96,7 @@ class DocsActivity : AppCompatActivity() {
             }
 
             attachFab.setOnClickListener {
-                requestStoragePermission()
+                openImagePicker()
             }
 
             sendButton.setOnClickListener {
@@ -153,28 +162,75 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestStoragePermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                STORAGE_PERMISSION_CODE
-            )
+    private fun openImagePicker() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // Android 14+: Use system photo picker (no permission needed)
+            val intent = Intent(MediaStore.ACTION_PICK_IMAGES)
+            intent.type = "image/*"
+            pickImageLauncher.launch(intent)
         } else {
-            openImagePicker()
+            // Android 13 and below: Check permission and use legacy picker
+            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_IMAGES
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                requestStoragePermission(permission)
+            } else {
+                val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                pickImageLauncher.launch(intent)
+            }
         }
     }
 
-    private fun openImagePicker() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, PICK_IMAGE_REQUEST)
+    private fun requestStoragePermission(permission: String) {
+        if (ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
+            AlertDialog.Builder(this)
+                .setTitle("Storage Permission Needed")
+                .setMessage("This app needs storage access to upload images. Please grant the permission.")
+                .setPositiveButton("OK") { _, _ ->
+                    ActivityCompat.requestPermissions(this, arrayOf(permission), STORAGE_PERMISSION_CODE)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            ActivityCompat.requestPermissions(this, arrayOf(permission), STORAGE_PERMISSION_CODE)
+        }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null) {
-            val imageUri = data.data
-            imageUri?.let { processImage(it) }
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        android.util.Log.d("DocsActivity", "Permission result: requestCode=$requestCode, permissions=${permissions.joinToString()}, grantResults=${grantResults.joinToString()}")
+        if (requestCode == STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            android.util.Log.d("DocsActivity", "Storage permission granted")
+            val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            pickImageLauncher.launch(intent)
+        } else {
+            android.util.Log.w("DocsActivity", "Storage permission denied")
+            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_IMAGES
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Permission Denied")
+                    .setMessage("Storage permission was permanently denied. Please enable it in Settings > Apps > Dhwani Voice AI > Permissions.")
+                    .setPositiveButton("Go to Settings") { _, _ ->
+                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        intent.data = Uri.parse("package:$packageName")
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } else {
+                Toast.makeText(this, "Storage permission denied", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -297,19 +353,6 @@ class DocsActivity : AppCompatActivity() {
                 }
             }
         }.start()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            openImagePicker()
-        } else {
-            Toast.makeText(this, "Storage permission denied", Toast.LENGTH_SHORT).show()
-        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

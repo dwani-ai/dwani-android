@@ -177,7 +177,7 @@ class TranslateActivity : AppCompatActivity() {
                             .show()
                         false
                     }
-                    R.id.nav_translate -> true
+                    //R.id.nav_translate -> true // TODO revert for translation
                     R.id.nav_docs -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Docs?")
@@ -191,7 +191,7 @@ class TranslateActivity : AppCompatActivity() {
                     else -> false
                 }
             }
-            bottomNavigation.selectedItemId = R.id.nav_translate
+            //bottomNavigation.selectedItemId = R.id.nav_translate // TODO revert for translation
         } catch (e: Exception) {
             android.util.Log.e("TranslateActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()

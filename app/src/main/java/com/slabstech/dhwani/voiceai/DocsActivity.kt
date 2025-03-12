@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.text.Editable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -47,26 +46,27 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
+    private lateinit var ttsProgressBar: ProgressBar
     private lateinit var attachFab: FloatingActionButton
-    private lateinit var textQueryInput: EditText
-    private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
     private val RETRY_DELAY_MS = 2000L
-    private var selectedImageUri: Uri? = null
+    private var lastImageUri: Uri? = null
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            selectedImageUri = result.data?.data
-            selectedImageUri?.let {
+            val imageUri = result.data?.data
+            imageUri?.let {
+                lastImageUri = it
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Uploaded Image", timestamp, true, it) // Store Uri
+                val message = Message("Uploaded Image", timestamp, true, it)
                 messageList.add(message)
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+                processImage(it, "describe image") // Process immediately
             }
         }
     }
@@ -83,9 +83,8 @@ class DocsActivity : AppCompatActivity() {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
             audioLevelBar = findViewById(R.id.audioLevelBar)
             progressBar = findViewById(R.id.progressBar)
+            ttsProgressBar = findViewById(R.id.ttsProgressBar)
             attachFab = findViewById(R.id.attachFab)
-            textQueryInput = findViewById(R.id.textQueryInput)
-            sendButton = findViewById(R.id.sendButton)
             toolbar = findViewById(R.id.toolbar)
             val bottomNavigation = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
 
@@ -93,7 +92,11 @@ class DocsActivity : AppCompatActivity() {
 
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
-            }, { _, _ -> })
+            }, { message, _ ->
+                if (message.isQuery && message.imageUri != null) {
+                    showCustomQueryDialog(message.imageUri!!)
+                }
+            })
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@DocsActivity)
                 adapter = messageAdapter
@@ -104,39 +107,6 @@ class DocsActivity : AppCompatActivity() {
             attachFab.setOnClickListener {
                 openImagePicker()
             }
-
-            sendButton.setOnClickListener {
-                val query = textQueryInput.text.toString().trim()
-                if (selectedImageUri != null) {
-                    processImage(selectedImageUri!!, query.ifEmpty { "describe image" })
-                    textQueryInput.text.clear()
-                    selectedImageUri = null
-                } else if (query.isNotEmpty()) {
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Text Input: $query", timestamp, true)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-                    textQueryInput.text.clear()
-                } else {
-                    Toast.makeText(this, "Please enter text or upload an image", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    if (s.isNullOrEmpty()) {
-                        sendButton.visibility = View.GONE
-                        attachFab.visibility = View.VISIBLE
-                    } else {
-                        sendButton.visibility = View.VISIBLE
-                        attachFab.visibility = View.GONE
-                    }
-                }
-            })
 
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
@@ -149,7 +119,7 @@ class DocsActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }
+                    }/* // TODO revert for translation
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -159,7 +129,7 @@ class DocsActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }
+                    }*/
                     R.id.nav_docs -> true
                     else -> false
                 }
@@ -341,6 +311,9 @@ class DocsActivity : AppCompatActivity() {
                         historyRecyclerView.requestLayout()
                         scrollToLatestMessage()
                         progressBar.visibility = View.GONE
+                        if (messageList.size == 2) { // First upload
+                            Toast.makeText(this, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
+                        }
                     }
                 } else {
                     runOnUiThread {
@@ -358,6 +331,24 @@ class DocsActivity : AppCompatActivity() {
                 imageFile.delete()
             }
         }.start()
+    }
+
+    private fun showCustomQueryDialog(imageUri: Uri) {
+        val editText = EditText(this)
+        editText.hint = "Enter your question"
+        AlertDialog.Builder(this)
+            .setTitle("Ask About This Image")
+            .setView(editText)
+            .setPositiveButton("Ask") { _, _ ->
+                val query = editText.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    processImage(imageUri, query)
+                } else {
+                    Toast.makeText(this, "Please enter a question", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -380,7 +371,7 @@ class DocsActivity : AppCompatActivity() {
             }
             R.id.action_clear -> {
                 messageList.clear()
-                selectedImageUri = null
+                lastImageUri = null
                 messageAdapter.notifyDataSetChanged()
                 true
             }
@@ -429,22 +420,19 @@ class DocsActivity : AppCompatActivity() {
         if (position < 0 || position >= messageList.size) return
 
         val message = messageList[position]
-        val options = arrayOf("Delete", "Share", "Copy")
+        val options = arrayOf("Delete", "Share", "Copy") + if (message.isQuery && message.imageUri != null) arrayOf("Ask Another Question") else emptyArray()
         AlertDialog.Builder(this)
             .setTitle("Message Options")
             .setItems(options) { _, which ->
-                when (which) {
-                    0 -> { // Delete
+                when (options[which]) {
+                    "Delete" -> {
                         messageList.removeAt(position)
                         messageAdapter.notifyItemRemoved(position)
                         messageAdapter.notifyItemRangeChanged(position, messageList.size)
                     }
-                    1 -> { // Share
-                        shareMessage(message)
-                    }
-                    2 -> { // Copy
-                        copyMessage(message)
-                    }
+                    "Share" -> shareMessage(message)
+                    "Copy" -> copyMessage(message)
+                    "Ask Another Question" -> showCustomQueryDialog(message.imageUri!!)
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -463,13 +451,13 @@ class DocsActivity : AppCompatActivity() {
         val text: String,
         val timestamp: String,
         val isQuery: Boolean,
-        val imageUri: Uri? = null // Store image Uri for thumbnail
+        val imageUri: Uri? = null
     )
 
     class MessageAdapter(
         private val messages: MutableList<Message>,
         private val onLongClick: (Int) -> Unit,
-        private val onAudioControlClick: (Message, ImageButton) -> Unit
+        private val onThumbnailClick: (Message, ImageButton) -> Unit // Changed to onThumbnailClick
     ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
         class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -511,10 +499,12 @@ class DocsActivity : AppCompatActivity() {
             holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
             holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
 
-            // Show thumbnail for user queries with an image
             if (message.isQuery && message.imageUri != null) {
                 holder.thumbnailImage.visibility = View.VISIBLE
                 holder.thumbnailImage.setImageURI(message.imageUri)
+                holder.thumbnailImage.setOnClickListener {
+                    onThumbnailClick(message, holder.audioControlButton) // Trigger custom query
+                }
             } else {
                 holder.thumbnailImage.visibility = View.GONE
             }

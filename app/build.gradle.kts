@@ -11,7 +11,7 @@ android {
         applicationId = "com.slabstech.dhwani.voiceai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
+        versionCode = 16
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

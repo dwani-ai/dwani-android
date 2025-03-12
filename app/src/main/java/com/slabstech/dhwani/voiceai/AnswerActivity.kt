@@ -185,6 +185,7 @@ class AnswerActivity : AppCompatActivity() {
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
                     R.id.nav_answer -> true
+                    /* // TODO revert for translation
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -194,7 +195,7 @@ class AnswerActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }
+                    }*/
                     R.id.nav_docs -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Docs?")

@@ -55,27 +55,6 @@
         android:layout_gravity="bottom"
         android:layout_marginBottom="56dp">
 
-        <EditText
-            android:id="@+id/textQueryInput"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Type a message or upload an image..."
-            android:textSize="16sp"
-            android:textColor="@color/whatsapp_text"
-            android:background="@drawable/whatsapp_input_background"
-            android:padding="8dp"
-            android:layout_marginEnd="8dp"/>
-
-        <ImageButton
-            android:id="@+id/sendButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@drawable/ic_send"
-            android:contentDescription="Send"
-            android:background="@android:color/transparent"
-            android:tint="@color/whatsapp_green"/>
-
         <ProgressBar
             android:id="@+id/ttsProgressBar"
             android:layout_width="24dp"
@@ -89,9 +68,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_attach"
-        android:contentDescription="Attach Image"
-        app:backgroundTint="@color/whatsapp_green"
-        app:tint="#FFFFFF"/>
+            android:contentDescription="Attach Image"
+            app:backgroundTint="@color/whatsapp_green"
+            app:tint="#FFFFFF"/>
     </LinearLayout>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView

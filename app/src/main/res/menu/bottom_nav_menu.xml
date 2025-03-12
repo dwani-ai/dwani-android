@@ -4,10 +4,11 @@
         android:id="@+id/nav_answer"
         android:icon="@android:drawable/ic_menu_help"
         android:title="Answer"/>
-    <item
+    <!--
+    <item // TODO revert for translation
         android:id="@+id/nav_translate"
         android:icon="@android:drawable/ic_menu_search"
-        android:title="Translate"/>
+        android:title="Translate"/>-->
     <item
         android:id="@+id/nav_docs"
         android:icon="@android:drawable/ic_menu_gallery"

@@ -185,7 +185,6 @@ class AnswerActivity : AppCompatActivity() {
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
                     R.id.nav_answer -> true
-                    /* // TODO revert for translation
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -195,7 +194,7 @@ class AnswerActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }*/
+                    }
                     R.id.nav_docs -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Docs?")
@@ -487,30 +486,40 @@ class AnswerActivity : AppCompatActivity() {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val language = prefs.getString("language", "kannada") ?: "kannada" // Default to kannada as per curl
+        val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Hardcode to match curl
+//        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
+
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
+        // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true) // Ensure redirects are followed
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                android.util.Log.d("AnswerActivity", "Request URL: ${request.url}, Method: ${request.method}, Response Code: ${response.code}")
+                response
+            }
             .build()
 
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
                 "file", audioFile.name,
-                audioFile.asRequestBody("audio/x-wav".toMediaType()) // Matches curl type
+                audioFile.asRequestBody("audio/x-wav".toMediaType())
             )
             .build()
 
         val request = Request.Builder()
-            .url("$transcriptionApiEndpoint?language=$language")
-            .header("accept", "application/json") // Matches curl -H 'accept: application/json'
-            .header("X-API-Key", dhwaniApiKey)   // Matches curl -H 'X-API-Key: your-new-secret-api-key'
-            // Content-Type: multipart/form-data is set automatically by OkHttp with MultipartBody
+            .url("$transcriptionApiEndpoint?language=$language") // Trailing slash included
+            .header("accept", "application/json")
+            .header("X-API-Key", dhwaniApiKey)
             .post(requestBody)
             .build()
 
@@ -586,6 +595,7 @@ class AnswerActivity : AppCompatActivity() {
             }
         }.start()
     }
+
     private var mediaPlayer: MediaPlayer? = null
 
     private fun scrollToLatestMessage() {

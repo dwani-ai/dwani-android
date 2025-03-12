@@ -177,7 +177,7 @@ class TranslateActivity : AppCompatActivity() {
                             .show()
                         false
                     }
-                    //R.id.nav_translate -> true // TODO revert for translation
+                    R.id.nav_translate -> true
                     R.id.nav_docs -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Docs?")
@@ -191,7 +191,7 @@ class TranslateActivity : AppCompatActivity() {
                     else -> false
                 }
             }
-            //bottomNavigation.selectedItemId = R.id.nav_translate // TODO revert for translation
+            bottomNavigation.selectedItemId = R.id.nav_translate
         } catch (e: Exception) {
             android.util.Log.e("TranslateActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -429,19 +429,37 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File?) {
-        if (audioFile == null) return
+        if (audioFile == null || !audioFile.exists()) {
+            android.util.Log.e("AnswerActivity", "Audio file is null or does not exist")
+            runOnUiThread { Toast.makeText(this, "Audio file not found", Toast.LENGTH_SHORT).show() }
+            return
+        }
 
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val language = prefs.getString("language", "kannada") ?: "kannada" // Source language
+        val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
+        //val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
+
         val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
 
+
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+
+        // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true) // Ensure redirects are followed
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                android.util.Log.d("AnswerActivity", "Request URL: ${request.url}, Method: ${request.method}, Response Code: ${response.code}")
+                response
+            }
             .build()
 
         val requestBody = MultipartBody.Builder()
@@ -453,8 +471,9 @@ class TranslateActivity : AppCompatActivity() {
             .build()
 
         val request = Request.Builder()
-            .url("$transcriptionApiEndpoint?language=$language")
+            .url("$transcriptionApiEndpoint?language=$language") // Trailing slash included
             .header("accept", "application/json")
+            .header("X-API-Key", dhwaniApiKey)
             .post(requestBody)
             .build()
 
@@ -467,16 +486,26 @@ class TranslateActivity : AppCompatActivity() {
                 while (attempts < maxRetries && !success) {
                     try {
                         val response = client.newCall(request).execute()
+                        responseBody = response.body?.string()
+                        android.util.Log.d("AnswerActivity", "Transcription response: code=${response.code}, body=$responseBody")
+
                         if (response.isSuccessful) {
-                            responseBody = response.body?.string()
                             success = true
                         } else {
                             attempts++
+                            android.util.Log.w("AnswerActivity", "Transcription failed: ${response.code} - ${response.message}")
                             if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                            runOnUiThread {
+                                Toast.makeText(this, "Transcription failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     } catch (e: IOException) {
                         attempts++
+                        android.util.Log.e("AnswerActivity", "Network error on attempt $attempts: ${e.message}", e)
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
+                        runOnUiThread {
+                            Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
 
@@ -486,32 +515,37 @@ class TranslateActivity : AppCompatActivity() {
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                     if (voiceQueryText.isNotEmpty() && !json.has("error")) {
                         lastQuery = voiceQueryText
-                        val message = Message("Voice Input: $voiceQueryText", timestamp, true)
+                        val message = Message("Voice Query: $voiceQueryText", timestamp, true)
                         runOnUiThread {
                             messageList.add(message)
                             messageAdapter.notifyItemInserted(messageList.size - 1)
                             historyRecyclerView.requestLayout()
                             scrollToLatestMessage()
                             progressBar.visibility = View.GONE
+                            getTranslationResponse(voiceQueryText)
                         }
-                        getTranslationResponse(voiceQueryText)
                     } else {
+                        android.util.Log.w("AnswerActivity", "Transcription response empty or invalid: $responseBody")
                         runOnUiThread {
-                            Toast.makeText(this, "Voice Input empty or invalid", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
                             progressBar.visibility = View.GONE
                         }
                     }
                 } else {
+                    android.util.Log.e("AnswerActivity", "Transcription failed after $maxRetries retries")
                     runOnUiThread {
-                        Toast.makeText(this, "Transcription failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                         progressBar.visibility = View.GONE
                     }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("AnswerActivity", "Crash in sendAudioToApi: ${e.message}", e)
                 runOnUiThread {
                     Toast.makeText(this, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
                 }
+            } finally {
+                audioFile.delete() // Clean up temporary file
             }
         }.start()
     }
@@ -536,6 +570,8 @@ class TranslateActivity : AppCompatActivity() {
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/translate?src_lang=$srcLang&tgt_lang=$tgtLang"
+
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -583,6 +619,7 @@ class TranslateActivity : AppCompatActivity() {
             .url(translateApiEndpoint)
             .header("accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("X-API-Key", dhwaniApiKey)
             .post(requestBody)
             .build()
 

@@ -89,7 +89,7 @@ class DhwaniActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }/*
+                    }
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -99,7 +99,7 @@ class DhwaniActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }*/
+                    }
                     R.id.nav_docs -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Docs?")

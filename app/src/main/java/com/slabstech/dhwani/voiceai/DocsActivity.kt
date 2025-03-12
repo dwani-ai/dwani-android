@@ -119,7 +119,7 @@ class DocsActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }/* // TODO revert for translation
+                    }
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -129,7 +129,7 @@ class DocsActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }*/
+                    }
                     R.id.nav_docs -> true
                     else -> false
                 }

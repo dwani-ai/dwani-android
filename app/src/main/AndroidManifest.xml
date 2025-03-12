@@ -27,7 +27,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
+        <activity android:name=".DhwaniActivity" />
         <activity
             android:name=".OnboardingActivity"
             android:exported="false"/>

@@ -44,7 +44,7 @@
         <EditTextPreference
             android:key="transcription_api_endpoint"
             android:title="Transcription API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
             android:inputType="textUri"
             android:summary="Set the URL for the transcription API"/>
 

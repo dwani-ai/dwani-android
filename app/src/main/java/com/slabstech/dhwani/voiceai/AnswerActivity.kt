@@ -489,7 +489,7 @@ class AnswerActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada" // Default to kannada as per curl
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe" // Hardcode to match curl
+        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Hardcode to match curl
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()

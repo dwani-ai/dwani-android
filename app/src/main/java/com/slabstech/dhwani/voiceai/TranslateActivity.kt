@@ -569,7 +569,7 @@ class TranslateActivity : AppCompatActivity() {
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/translate?src_lang=$srcLang&tgt_lang=$tgtLang"
+        val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/translate" // No query params
 
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
@@ -593,7 +593,6 @@ class TranslateActivity : AppCompatActivity() {
             }
             currentSentence.add(word)
             wordCount++
-            // If the word ends with a sentence-ending punctuation, split here
             if (word.endsWith('.') || word.endsWith('!') || word.endsWith('?')) {
                 sentences.add(currentSentence.joinToString(" "))
                 currentSentence = mutableListOf()
@@ -616,7 +615,7 @@ class TranslateActivity : AppCompatActivity() {
         }.toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
-            .url(translateApiEndpoint)
+            .url(translateApiEndpoint) // No query params here
             .header("accept", "application/json")
             .header("Content-Type", "application/json")
             .header("X-API-Key", dhwaniApiKey)
@@ -677,6 +676,7 @@ class TranslateActivity : AppCompatActivity() {
             }
         }.start()
     }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

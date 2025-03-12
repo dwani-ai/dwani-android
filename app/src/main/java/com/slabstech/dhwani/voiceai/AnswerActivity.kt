@@ -477,19 +477,35 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File?) {
-        if (audioFile == null) return
+        if (audioFile == null || !audioFile.exists()) {
+            android.util.Log.e("AnswerActivity", "Audio file is null or does not exist")
+            runOnUiThread { Toast.makeText(this, "Audio file not found", Toast.LENGTH_SHORT).show() }
+            return
+        }
 
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/"
+//        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
 
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+
+        // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true) // Ensure redirects are followed
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                android.util.Log.d("AnswerActivity", "Request URL: ${request.url}, Method: ${request.method}, Response Code: ${response.code}")
+                response
+            }
             .build()
 
         val requestBody = MultipartBody.Builder()
@@ -501,8 +517,9 @@ class AnswerActivity : AppCompatActivity() {
             .build()
 
         val request = Request.Builder()
-            .url("$transcriptionApiEndpoint?language=$language")
+            .url("$transcriptionApiEndpoint?language=$language") // Trailing slash included
             .header("accept", "application/json")
+            .header("X-API-Key", dhwaniApiKey)
             .post(requestBody)
             .build()
 
@@ -515,19 +532,22 @@ class AnswerActivity : AppCompatActivity() {
                 while (attempts < maxRetries && !success) {
                     try {
                         val response = client.newCall(request).execute()
+                        responseBody = response.body?.string()
+                        android.util.Log.d("AnswerActivity", "Transcription response: code=${response.code}, body=$responseBody")
+
                         if (response.isSuccessful) {
-                            responseBody = response.body?.string()
                             success = true
                         } else {
                             attempts++
+                            android.util.Log.w("AnswerActivity", "Transcription failed: ${response.code} - ${response.message}")
                             if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                             runOnUiThread {
-                                Toast.makeText(this, "Transcription API failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, "Transcription failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } catch (e: IOException) {
-                        e.printStackTrace()
                         attempts++
+                        android.util.Log.e("AnswerActivity", "Network error on attempt $attempts: ${e.message}", e)
                         if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
                         runOnUiThread {
                             Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
@@ -545,18 +565,20 @@ class AnswerActivity : AppCompatActivity() {
                         runOnUiThread {
                             messageList.add(message)
                             messageAdapter.notifyItemInserted(messageList.size - 1)
-                            historyRecyclerView.requestLayout() // Force layout update
+                            historyRecyclerView.requestLayout()
                             scrollToLatestMessage()
                             progressBar.visibility = View.GONE
+                            getChatResponse(voiceQueryText)
                         }
-                        getChatResponse(voiceQueryText)
-                    }  else {
+                    } else {
+                        android.util.Log.w("AnswerActivity", "Transcription response empty or invalid: $responseBody")
                         runOnUiThread {
                             Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
                             progressBar.visibility = View.GONE
                         }
                     }
                 } else {
+                    android.util.Log.e("AnswerActivity", "Transcription failed after $maxRetries retries")
                     runOnUiThread {
                         Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                         progressBar.visibility = View.GONE
@@ -568,6 +590,8 @@ class AnswerActivity : AppCompatActivity() {
                     Toast.makeText(this, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
                 }
+            } finally {
+                audioFile.delete() // Clean up temporary file
             }
         }.start()
     }
@@ -596,7 +620,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: "https://gaganyatri-llm-indic-server-cpu.hf.space/chat"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat"
         val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -681,7 +705,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
+        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/audio/speech"
         val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()

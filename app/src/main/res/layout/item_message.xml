@@ -30,4 +30,12 @@
         android:src="@android:drawable/ic_media_play"
         android:background="@android:color/transparent"
         android:visibility="gone"/>
+    <ImageView
+        android:id="@+id/thumbnailImage"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:visibility="gone"
+        android:scaleType="centerCrop"
+        android:layout_gravity="end"
+        android:layout_marginTop="4dp" />
 </LinearLayout>

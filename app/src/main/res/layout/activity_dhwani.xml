@@ -15,7 +15,7 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="Dhwani Voice AI - Docs"
+            app:title="Dhwani Voice AI - Voice"
             app:titleTextColor="#FFFFFF"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
     </com.google.android.material.appbar.AppBarLayout>
@@ -55,22 +55,25 @@
         android:layout_gravity="bottom"
         android:layout_marginBottom="56dp">
 
-        <ProgressBar
-            android:id="@+id/ttsProgressBar"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:visibility="gone"
-            android:layout_marginEnd="8dp"
-            android:indeterminateTint="@color/whatsapp_green"/>
+        <TextView
+            android:id="@+id/transcriptionOutput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Transcription will appear here..."
+            android:textSize="16sp"
+            android:textColor="@color/whatsapp_text"
+            android:background="@drawable/whatsapp_message_bubble"
+            android:padding="8dp"
+            android:layout_marginEnd="8dp"/>
 
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/attachFab"
+        <Button
+            android:id="@+id/recordButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:src="@drawable/ic_attach"
-            android:contentDescription="Attach Image"
-            app:backgroundTint="@color/whatsapp_green"
-            app:tint="#FFFFFF"/>
+            android:text="Start"
+            android:backgroundTint="@color/whatsapp_green"
+            android:textColor="#FFFFFF"/>
     </LinearLayout>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView

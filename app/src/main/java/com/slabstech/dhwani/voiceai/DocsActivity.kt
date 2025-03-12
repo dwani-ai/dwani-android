@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
-import android.util.Base64
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -30,13 +29,13 @@ import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
@@ -54,14 +53,21 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/docs"
+    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
     private val RETRY_DELAY_MS = 2000L
+    private var selectedImageUri: Uri? = null
 
-    // Activity Result Launcher for photo picker or legacy picker
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            val imageUri = result.data?.data
-            imageUri?.let { processImage(it) }
+            selectedImageUri = result.data?.data
+            selectedImageUri?.let {
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Uploaded Image", timestamp, true, it) // Store Uri
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+            }
         }
     }
 
@@ -101,7 +107,11 @@ class DocsActivity : AppCompatActivity() {
 
             sendButton.setOnClickListener {
                 val query = textQueryInput.text.toString().trim()
-                if (query.isNotEmpty()) {
+                if (selectedImageUri != null) {
+                    processImage(selectedImageUri!!, query.ifEmpty { "describe image" })
+                    textQueryInput.text.clear()
+                    selectedImageUri = null
+                } else if (query.isNotEmpty()) {
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                     val message = Message("Text Input: $query", timestamp, true)
                     messageList.add(message)
@@ -164,12 +174,10 @@ class DocsActivity : AppCompatActivity() {
 
     private fun openImagePicker() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Android 14+: Use system photo picker (no permission needed)
             val intent = Intent(MediaStore.ACTION_PICK_IMAGES)
             intent.type = "image/*"
             pickImageLauncher.launch(intent)
         } else {
-            // Android 13 and below: Check permission and use legacy picker
             val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
@@ -234,29 +242,23 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun processImage(uri: Uri) {
+    private fun processImage(uri: Uri, query: String) {
         runOnUiThread { progressBar.visibility = View.VISIBLE }
 
         Thread {
             try {
-                val inputStream: InputStream? = contentResolver.openInputStream(uri)
-                val byteArrayOutputStream = ByteArrayOutputStream()
-                inputStream?.use { it.copyTo(byteArrayOutputStream) }
-                val imageBytes = byteArrayOutputStream.toByteArray()
-                val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-                val imageDataUrl = "data:image;base64,$base64Image"
-
-                val uploadTimestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val uploadMessage = Message("Uploaded Image", uploadTimestamp, true)
-                runOnUiThread {
-                    messageList.add(uploadMessage)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
+                val imageFile = uriToFile(uri)
+                if (imageFile == null || !imageFile.exists()) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Failed to process image file", Toast.LENGTH_SHORT).show()
+                        progressBar.visibility = View.GONE
+                    }
+                    return@Thread
                 }
 
-                getImageDescription(imageDataUrl)
+                getImageDescription(imageFile, query)
             } catch (e: Exception) {
+                android.util.Log.e("DocsActivity", "Image processing error: ${e.message}", e)
                 runOnUiThread {
                     Toast.makeText(this, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
@@ -265,7 +267,21 @@ class DocsActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun getImageDescription(base64Image: String) {
+    private fun uriToFile(uri: Uri): File? {
+        return try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            val tempFile = File(cacheDir, "temp_image_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(tempFile).use { outputStream ->
+                inputStream?.use { it.copyTo(outputStream) }
+            }
+            tempFile
+        } catch (e: Exception) {
+            android.util.Log.e("DocsActivity", "Failed to convert Uri to File: ${e.message}", e)
+            null
+        }
+    }
+
+    private fun getImageDescription(imageFile: File, query: String) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val client = OkHttpClient.Builder()
@@ -274,24 +290,14 @@ class DocsActivity : AppCompatActivity() {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
-        val messages = JSONArray().put(
-            JSONObject().apply {
-                put("role", "user")
-                put("content", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("type", "image")
-                        put("image", base64Image)
-                    })
-                    put(JSONObject().apply {
-                        put("type", "text")
-                        put("text", "Describe this image.")
-                    })
-                })
-            }
-        )
-
-        val requestBody = JSONObject().put("messages", messages).toString()
-            .toRequestBody("application/json".toMediaType())
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "file", imageFile.name,
+                imageFile.asRequestBody("image/jpeg".toMediaType())
+            )
+            .addFormDataPart("query", query)
+            .build()
 
         val request = Request.Builder()
             .url(VLM_API_ENDPOINT)
@@ -326,12 +332,9 @@ class DocsActivity : AppCompatActivity() {
 
                 if (success && responseBody != null) {
                     val json = JSONObject(responseBody)
-                    val description = json.optJSONArray("choices")
-                        ?.getJSONObject(0)
-                        ?.optJSONObject("message")
-                        ?.optString("content") ?: "No description available"
+                    val description = json.optString("answer", "No description available")
                     val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Description: $description", timestamp, false)
+                    val message = Message("Response: $description", timestamp, false)
                     runOnUiThread {
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
@@ -341,16 +344,18 @@ class DocsActivity : AppCompatActivity() {
                     }
                 } else {
                     runOnUiThread {
-                        Toast.makeText(this, "Image description failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Image query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
                         progressBar.visibility = View.GONE
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("DocsActivity", "VLM parsing error: ${e.message}", e)
                 runOnUiThread {
-                    Toast.makeText(this, "Image processing error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
                     progressBar.visibility = View.GONE
                 }
+            } finally {
+                imageFile.delete()
             }
         }.start()
     }
@@ -375,6 +380,7 @@ class DocsActivity : AppCompatActivity() {
             }
             R.id.action_clear -> {
                 messageList.clear()
+                selectedImageUri = null
                 messageAdapter.notifyDataSetChanged()
                 true
             }
@@ -446,9 +452,9 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun copyMessage(message: Message) {
-        val copyText = "${message.text}\n[${message.timestamp}]"
+        val shareText = "${message.text}\n[${message.timestamp}]"
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Message", copyText)
+        val clip = ClipData.newPlainText("Message", shareText)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
@@ -456,7 +462,8 @@ class DocsActivity : AppCompatActivity() {
     data class Message(
         val text: String,
         val timestamp: String,
-        val isQuery: Boolean
+        val isQuery: Boolean,
+        val imageUri: Uri? = null // Store image Uri for thumbnail
     )
 
     class MessageAdapter(
@@ -470,6 +477,7 @@ class DocsActivity : AppCompatActivity() {
             val timestampText: TextView = itemView.findViewById(R.id.timestampText)
             val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
             val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
+            val thumbnailImage: ImageView = itemView.findViewById(R.id.thumbnailImage)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -502,6 +510,14 @@ class DocsActivity : AppCompatActivity() {
 
             holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
             holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
+
+            // Show thumbnail for user queries with an image
+            if (message.isQuery && message.imageUri != null) {
+                holder.thumbnailImage.visibility = View.VISIBLE
+                holder.thumbnailImage.setImageURI(message.imageUri)
+            } else {
+                holder.thumbnailImage.visibility = View.GONE
+            }
 
             holder.audioControlButton.visibility = View.GONE
 

@@ -44,28 +44,28 @@
         <EditTextPreference
             android:key="transcription_api_endpoint"
             android:title="Transcription API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/transcribe/"
             android:inputType="textUri"
             android:summary="Set the URL for the transcription API"/>
 
         <EditTextPreference
             android:key="chat_api_endpoint"
             android:title="Chat API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/chat"
             android:inputType="textUri"
             android:summary="Set the URL for the chat API"/>
 
         <EditTextPreference
             android:key="translate_api_endpoint"
             android:title="Translate API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/translate"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/translate"
             android:inputType="textUri"
             android:summary="Set the URL for the Translate API"/>
 
         <EditTextPreference
             android:key="vlm_api_endpoint"
             android:title="Image API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/caption"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/visual_query/"
             android:inputType="textUri"
             android:summary="Set the URL for the Image API"/>
 
@@ -73,7 +73,7 @@
         <EditTextPreference
             android:key="tts_api_endpoint"
             android:title="Text to Speech API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/audio/speech"
+            android:defaultValue="https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/audio/speech"
             android:inputType="textUri"
             android:summary="Set the URL for the TTS API"/>
 
@@ -81,7 +81,7 @@
         <EditTextPreference
             android:key="chat_api_key"
             android:title="Dhwani API Key"
-            android:defaultValue="your-new-secret-api-key"
+            android:defaultValue="is-this-a-new-secret-key"
             android:inputType="textPassword"
             android:summary="Enter your secure API key for Dhwani"/>
         <Preference

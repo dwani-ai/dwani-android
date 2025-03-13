@@ -490,8 +490,8 @@ class AnswerActivity : AppCompatActivity() {
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
 //        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
-        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/transcribe/"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
 
         // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
@@ -620,8 +620,8 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat"
-        val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/chat"
+        val chatApiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -705,8 +705,8 @@ class AnswerActivity : AppCompatActivity() {
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/audio/speech"
-        val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val ttsApiEndpoint = "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/audio/speech"
+        val apiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

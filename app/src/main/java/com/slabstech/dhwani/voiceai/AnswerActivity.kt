@@ -490,7 +490,7 @@ class AnswerActivity : AppCompatActivity() {
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
 //        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/") ?: "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/"
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         // Configure OkHttp with redirect handling

@@ -4,11 +4,15 @@
         <item>Kannada</item>
         <item>Hindi</item>
         <item>Tamil</item>
+        <item>Malayalam</item>
+        <item>Telugu</item>
     </string-array>
     <string-array name="language_values">
         <item>kannada</item>
         <item>hindi</item>
         <item>tamil</item>
+        <item>malayalam</item>
+        <item>telugu</item>
     </string-array>
     <string-array name="tts_voice_options">
         <item>Kannada Female</item>
@@ -21,15 +25,19 @@
         <!-- Match API voice values -->
     </string-array>
         <string-array name="target_languages">
-            <item>English (eng_Latn)</item>
-            <item>Hindi (hin_Deva)</item>
-            <item>Kannada (kan_Knda)</item>
-            <item>Tamil (tam_Taml)</item>
+            <item>English</item>
+            <item>Hindi</item>
+            <item>Kannada</item>
+            <item>Tamil</item>
+            <item>Malayalam</item>
+            <item>Telugu</item>
         </string-array>
         <string-array name="target_language_codes">
             <item>eng_Latn</item>
             <item>hin_Deva</item>
             <item>kan_Knda</item>
             <item>tam_Taml</item>
+            <item>mal_Mlym</item>
+            <item>tel_Telu</item>
         </string-array>
 </resources>

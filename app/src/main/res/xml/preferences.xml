@@ -73,7 +73,7 @@
         <EditTextPreference
             android:key="tts_api_endpoint"
             android:title="Text to Speech API Endpoint"
-            android:defaultValue="https://gaganyatri-llm-indic-server-vlm.hf.space/v1/audio/speech"
+            android:defaultValue="https://gaganyatri-tts-indic-server.hf.space/v1/audio/speech"
             android:inputType="textUri"
             android:summary="Set the URL for the TTS API"/>
 

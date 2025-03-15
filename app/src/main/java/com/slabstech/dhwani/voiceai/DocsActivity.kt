@@ -51,7 +51,7 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/visual_query/"
+    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
 
     //private val VLM_API_ENDPOINT = "http://:7860/v1/visual_query/"
 
@@ -257,8 +257,7 @@ class DocsActivity : AppCompatActivity() {
     private fun getImageDescription(imageFile: File, query: String) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
-        val query_2 = "describe the Image"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val client = OkHttpClient.Builder()
@@ -273,7 +272,7 @@ class DocsActivity : AppCompatActivity() {
                 "file", imageFile.name,
                 imageFile.asRequestBody("image/jpeg".toMediaType())
             )
-            .addFormDataPart("query", query_2)
+            .addFormDataPart("query", query)
             .build()
 
         val request = Request.Builder()

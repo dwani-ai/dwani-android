@@ -442,10 +442,10 @@ class TranslateActivity : AppCompatActivity() {
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         //val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/transcribe/"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
 
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
@@ -569,9 +569,9 @@ class TranslateActivity : AppCompatActivity() {
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm-experimental.hf.space/v1/translate" // No query params
+        val translateApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/translate" // No query params
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "is-this-a-new-secret-key") ?: "is-this-a-new-secret-key"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

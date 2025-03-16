@@ -316,7 +316,7 @@ class DhwaniActivity : AppCompatActivity() {
         override fun getItemCount(): Int = messages.size
     }
 }
-
+// Building Jarvis now
 class VoiceRecorder(private val onAudioUpdate: (Float, Boolean) -> Unit) {
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO

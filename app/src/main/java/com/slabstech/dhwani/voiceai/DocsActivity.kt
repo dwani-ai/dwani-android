@@ -52,6 +52,9 @@ class DocsActivity : AppCompatActivity() {
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
+
+    //private val VLM_API_ENDPOINT = "http://:7860/v1/visual_query/"
+
     private val RETRY_DELAY_MS = 2000L
     private var lastImageUri: Uri? = null
 
@@ -253,6 +256,9 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getImageDescription(imageFile: File, query: String) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+
+        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -272,6 +278,7 @@ class DocsActivity : AppCompatActivity() {
         val request = Request.Builder()
             .url(VLM_API_ENDPOINT)
             .header("accept", "application/json")
+            .header("X-API-Key", dhwaniApiKey)
             .post(requestBody)
             .build()
 

@@ -490,7 +490,7 @@ class AnswerActivity : AppCompatActivity() {
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
 //        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/") ?: "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/"
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         // Configure OkHttp with redirect handling
@@ -620,8 +620,26 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/chat"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server.hf.space/v1/chat"
         val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+
+        // Get the selected transcription language from preferences (e.g., "kannada", "hindi")
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+
+        // Map transcription language values to chat API language codes
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu"
+        )
+
+        // Set source and target language based on the transcription language preference
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Fallback only if invalid
+        val tgtLang = languageMap[selectedLanguage] ?: "kan_Knda" // Same as srcLang for chat
+
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -629,7 +647,11 @@ class AnswerActivity : AppCompatActivity() {
             .build()
 
         val jsonMediaType = "application/json".toMediaType()
-        val requestBody = JSONObject().put("prompt", prompt).toString().toRequestBody(jsonMediaType)
+        val requestBody = JSONObject().apply {
+            put("prompt", prompt)
+            put("src_lang", srcLang)
+            put("tgt_lang", tgtLang)
+        }.toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
             .url(chatApiEndpoint)
@@ -675,7 +697,7 @@ class AnswerActivity : AppCompatActivity() {
                     runOnUiThread {
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
-                        historyRecyclerView.requestLayout() // Force layout update
+                        historyRecyclerView.requestLayout()
                         scrollToLatestMessage()
                         progressBar.visibility = View.GONE
                         textToSpeech(answerText, message)
@@ -693,7 +715,6 @@ class AnswerActivity : AppCompatActivity() {
             }
         }.start()
     }
-
     private fun textToSpeech(text: String, message: Message) {
         // Temporarily disabled to isolate crash issues - uncomment to re-enable after testing
         //return

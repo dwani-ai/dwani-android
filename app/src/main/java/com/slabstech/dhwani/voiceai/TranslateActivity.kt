@@ -33,6 +33,7 @@ import android.animation.PropertyValuesHolder
 import android.widget.LinearLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import com.google.android.material.appbar.AppBarLayout
+import com.slabstech.dhwani.voiceai.AnswerActivity.Message
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -440,9 +441,9 @@ class TranslateActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        //val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
+        //val transcriptionApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/") ?: "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/") ?: "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/"
 
 
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
@@ -657,6 +658,9 @@ class TranslateActivity : AppCompatActivity() {
                     runOnUiThread {
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
+                        // TODO - add speech out for Translation
+                        //textToSpeech(translatedText, message)
+
                         historyRecyclerView.requestLayout()
                         scrollToLatestMessage()
                         progressBar.visibility = View.GONE
@@ -676,6 +680,99 @@ class TranslateActivity : AppCompatActivity() {
             }
         }.start()
     }
+/*
+    private fun textToSpeech(text: String, message: com.slabstech.dhwani.voiceai.AnswerActivity.Message) {
+        // Temporarily disabled to isolate crash issues - uncomment to re-enable after testing
+        //return
+
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean("tts_enabled", false)) return
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
+
+        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
+            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+        val ttsApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/audio/speech"
+        val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        val jsonMediaType = "application/json".toMediaType()
+        val requestBody = JSONObject().apply {
+            put("input", text)
+            put("voice", voice)
+            put("model", "ai4bharat/indic-parler-tts")
+            put("response_format", "mp3")
+            put("speed", 1.0)
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url(ttsApiEndpoint)
+            .header("X-API-Key", apiKey)
+            .header("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+
+        runOnUiThread { ttsProgressBar.visibility = View.VISIBLE }
+
+        Thread {
+            try {
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val audioBytes = response.body?.bytes()
+                    runOnUiThread {
+                        try {
+                            if (audioBytes != null && audioBytes.isNotEmpty()) {
+                                val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                                FileOutputStream(audioFile).use { fos ->
+                                    fos.write(audioBytes)
+                                }
+                                if (audioFile.exists() && audioFile.length() > 0) {
+                                    message.audioFile = audioFile
+                                    ttsProgressBar.visibility = View.GONE
+                                    val messageIndex = messageList.indexOf(message)
+                                    if (messageIndex != -1) {
+                                        messageAdapter.notifyItemChanged(messageIndex)
+                                        android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
+                                    }
+                                    if (autoPlay) {
+                                        playAudio(audioFile)
+                                    }
+                                } else {
+                                    ttsProgressBar.visibility = View.GONE
+                                    Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                ttsProgressBar.visibility = View.GONE
+                                Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("AnswerActivity", "Crash in textToSpeech UI update: ${e.message}", e)
+                            ttsProgressBar.visibility = View.GONE
+                            Toast.makeText(this, "TTS UI error: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        ttsProgressBar.visibility = View.GONE
+                        Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: IOException) {
+                android.util.Log.e("AnswerActivity", "Crash in textToSpeech network call: ${e.message}", e)
+                runOnUiThread {
+                    ttsProgressBar.visibility = View.GONE
+                    Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+
+    }
+*/
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

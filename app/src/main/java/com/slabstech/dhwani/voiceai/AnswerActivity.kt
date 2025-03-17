@@ -488,7 +488,7 @@ class AnswerActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-//        val transcriptionApiEndpoint = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/transcribe/" // Add trailing slash
+//        val transcriptionApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/" // Add trailing slash
 
         val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/") ?: "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/"
         val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
@@ -620,7 +620,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server.hf.space/v1/chat") ?: "https://gaganyatri-llm-indic-server.hf.space/v1/chat"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/chat") ?: "https://gaganyatri-dhwani-server.hf.space/v1/chat"
         val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         // Get the selected transcription language from preferences (e.g., "kannada", "hindi")
@@ -726,7 +726,7 @@ class AnswerActivity : AppCompatActivity() {
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://gaganyatri-tts-indic-server.hf.space/v1/audio/speech"
+        val ttsApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/audio/speech"
         val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
 
         val client = OkHttpClient.Builder()

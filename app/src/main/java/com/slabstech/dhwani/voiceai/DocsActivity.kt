@@ -51,7 +51,7 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
+    private val VLM_API_ENDPOINT = "https://gaganyatri-dhwani-server.hf.space/v1/visual_query/"
 
     //private val VLM_API_ENDPOINT = "http://:7860/v1/visual_query/"
 

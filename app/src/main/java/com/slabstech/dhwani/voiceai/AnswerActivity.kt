@@ -488,10 +488,10 @@ class AnswerActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val language = prefs.getString("language", "kannada") ?: "kannada"
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-//        val transcriptionApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/" // Add trailing slash
+//        val transcriptionApiEndpoint = "https://slabstech-dhwani-server.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/") ?: "https://gaganyatri-dhwani-server.hf.space/v1/transcribe/"
-        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://slabstech-dhwani-server.hf.space/v1/transcribe/") ?: "https://slabstech-dhwani-server.hf.space/v1/transcribe/"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
 
         // Configure OkHttp with redirect handling
         val client = OkHttpClient.Builder()
@@ -620,8 +620,8 @@ class AnswerActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://gaganyatri-dhwani-server.hf.space/v1/chat") ?: "https://gaganyatri-dhwani-server.hf.space/v1/chat"
-        val chatApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val chatApiEndpoint = prefs.getString("chat_api_endpoint", "https://slabstech-dhwani-server.hf.space/v1/chat") ?: "https://slabstech-dhwani-server.hf.space/v1/chat"
+        val chatApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
 
         // Get the selected transcription language from preferences (e.g., "kannada", "hindi")
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
@@ -726,8 +726,8 @@ class AnswerActivity : AppCompatActivity() {
 
         val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://gaganyatri-dhwani-server.hf.space/v1/audio/speech"
-        val apiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val ttsApiEndpoint = "https://slabstech-dhwani-server.hf.space/v1/audio/speech"
+        val apiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

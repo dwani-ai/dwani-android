@@ -257,7 +257,7 @@ class DocsActivity : AppCompatActivity() {
     private fun getImageDescription(imageFile: File, query: String) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val dhwaniApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
 
         val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
         val client = OkHttpClient.Builder()

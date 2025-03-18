@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -56,6 +57,7 @@ class TranslateActivity : AppCompatActivity() {
     private lateinit var sendButton: ImageButton
     private lateinit var targetLanguageSpinner: Spinner
     private lateinit var toolbar: Toolbar
+    private lateinit var ttsProgressBar: ProgressBar // Added for TTS
     private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -66,6 +68,8 @@ class TranslateActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
+    private var mediaPlayer: MediaPlayer? = null // Added for TTS playback
+    private val AUTO_PLAY_KEY = "auto_play_tts" // Added for auto-play setting
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,13 +90,24 @@ class TranslateActivity : AppCompatActivity() {
             textQueryInput = findViewById(R.id.textQueryInput)
             sendButton = findViewById(R.id.sendButton)
             toolbar = findViewById(R.id.toolbar)
+            ttsProgressBar = findViewById(R.id.ttsProgressBar) // Initialize TTS ProgressBar
             val bottomNavigation = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
 
             setSupportActionBar(toolbar)
 
+            // Initialize TTS settings if not present
+            if (!prefs.contains(AUTO_PLAY_KEY)) {
+                prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
+            }
+            if (!prefs.contains("tts_enabled")) {
+                prefs.edit().putBoolean("tts_enabled", false).apply()
+            }
+
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
-            }, { _, _ -> }) // No audio playback for translations
+            }, { message, button ->
+                toggleAudioPlayback(message, button) // Enable audio control
+            })
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@TranslateActivity)
                 adapter = messageAdapter
@@ -513,11 +528,98 @@ class TranslateActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+                textToSpeech(translatedText, message) // Add TTS call
             } catch (e: Exception) {
                 Log.e("TranslateActivity", "Translation failed: ${e.message}", e)
                 Toast.makeText(this@TranslateActivity, "Translation error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun textToSpeech(text: String, message: Message) {
+        if (!prefs.getBoolean("tts_enabled", false)) return
+        val token = prefs.getString("access_token", null) ?: return
+        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
+            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
+
+        val ttsRequest = TTSRequest(text, voice, "ai4bharat/indic-parler-tts", "mp3", 1.0)
+
+        lifecycleScope.launch {
+            ttsProgressBar.visibility = View.VISIBLE
+            try {
+                val response = RetrofitClient.apiService.textToSpeech(ttsRequest, "Bearer $token")
+                val audioBytes = response.byteStream().readBytes()
+                if (audioBytes.isNotEmpty()) {
+                    val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                    FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
+                    if (audioFile.exists() && audioFile.length() > 0) {
+                        message.audioFile = audioFile
+                        val messageIndex = messageList.indexOf(message)
+                        if (messageIndex != -1) {
+                            messageAdapter.notifyItemChanged(messageIndex)
+                        }
+                        if (autoPlay) {
+                            playAudio(audioFile)
+                        }
+                    } else {
+                        Toast.makeText(this@TranslateActivity, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this@TranslateActivity, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("TranslateActivity", "TTS failed: ${e.message}", e)
+                Toast.makeText(this@TranslateActivity, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                ttsProgressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        message.audioFile?.let { audioFile ->
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                button.setImageResource(android.R.drawable.ic_media_play)
+            } else {
+                playAudio(audioFile)
+                button.setImageResource(R.drawable.ic_media_stop)
+            }
+        }
+    }
+
+    private fun playAudio(audioFile: File) {
+        if (!audioFile.exists()) {
+            Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        mediaPlayer?.release()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(audioFile.absolutePath)
+            prepare()
+            start()
+            val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
+            if (messageIndex != -1) {
+                val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
+            }
+            setOnCompletionListener {
+                it.release()
+                mediaPlayer = null
+                if (messageIndex != -1) {
+                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                    holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                }
+            }
+            setOnErrorListener { _, what, extra ->
+                Toast.makeText(this@TranslateActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
+                true
             }
         }
     }
@@ -541,6 +643,8 @@ class TranslateActivity : AppCompatActivity() {
         }
         audioRecord?.release()
         audioRecord = null
+        mediaPlayer?.release()
+        mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
     }
 
@@ -595,7 +699,15 @@ class TranslateActivity : AppCompatActivity() {
             holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
             holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
 
-            holder.audioControlButton.visibility = View.GONE // No audio for translations
+            if (!message.isQuery && message.audioFile != null) {
+                holder.audioControlButton.visibility = View.VISIBLE
+                holder.audioControlButton.setOnClickListener {
+                    onAudioControlClick(message, holder.audioControlButton)
+                }
+                holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
+            } else {
+                holder.audioControlButton.visibility = View.GONE
+            }
 
             val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
             holder.itemView.startAnimation(animation)

@@ -51,7 +51,11 @@ interface ApiService {
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
-        @Body ttsRequest: TTSRequest,
+        @Query("input") input: String,
+        @Query("voice") voice: String,
+        @Query("model") model: String,
+        @Query("response_format") responseFormat: String,
+        @Query("speed") speed: Double,
         @Header("Authorization") token: String
     ): ResponseBody
 

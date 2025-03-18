@@ -545,12 +545,17 @@ class TranslateActivity : AppCompatActivity() {
             ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
 
-        val ttsRequest = TTSRequest(text, voice, "ai4bharat/indic-parler-tts", "mp3", 1.0)
-
         lifecycleScope.launch {
             ttsProgressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.textToSpeech(ttsRequest, "Bearer $token")
+                val response = RetrofitClient.apiService.textToSpeech(
+                    input = text,
+                    voice = voice,
+                    model = "ai4bharat/indic-parler-tts",
+                    responseFormat = "mp3",
+                    speed = 1.0,
+                    token = "Bearer $token"
+                )
                 val audioBytes = response.byteStream().readBytes()
                 if (audioBytes.isNotEmpty()) {
                     val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")

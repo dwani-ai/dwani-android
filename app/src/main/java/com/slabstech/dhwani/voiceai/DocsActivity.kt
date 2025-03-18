@@ -28,6 +28,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
+import android.media.MediaPlayer
 import android.util.Log
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,6 +53,8 @@ class DocsActivity : AppCompatActivity() {
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastImageUri: Uri? = null
+    private var mediaPlayer: MediaPlayer? = null // For TTS playback
+    private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -65,7 +68,7 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                processImage(it, "describe image") // Process immediately
+                processImage(it, "describe image")
             }
         }
     }
@@ -90,11 +93,21 @@ class DocsActivity : AppCompatActivity() {
 
             setSupportActionBar(toolbar)
 
+            // Initialize TTS settings if not present
+            if (!prefs.contains(AUTO_PLAY_KEY)) {
+                prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
+            }
+            if (!prefs.contains("tts_enabled")) {
+                prefs.edit().putBoolean("tts_enabled", false).apply()
+            }
+
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
-            }, { message, _ ->
+            }, { message, button ->
                 if (message.isQuery && message.imageUri != null) {
                     showCustomQueryDialog(message.imageUri!!)
+                } else if (!message.isQuery && message.audioFile != null) {
+                    toggleAudioPlayback(message, button)
                 }
             })
             historyRecyclerView.apply {
@@ -234,7 +247,7 @@ class DocsActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                getImageDescription(imageFile, query)
+                getImageDescriptionAndTranslation(imageFile, query)
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Image processing error: ${e.message}", e)
                 Toast.makeText(this@DocsActivity, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -257,8 +270,18 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun getImageDescription(imageFile: File, query: String) {
+    private fun getImageDescriptionAndTranslation(imageFile: File, query: String) {
         val token = prefs.getString("access_token", null) ?: return
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu"
+        )
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val tgtLang = languageMap[selectedLanguage] ?: "kan_Knda"
 
         val requestFile = imageFile.asRequestBody("image/jpeg".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", imageFile.name, requestFile)
@@ -266,23 +289,123 @@ class DocsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.apiService.visualQuery(filePart, queryPart, "Bearer $token")
-                val description = response.answer
+                // Step 1: Get English description
+                val vlmResponse = RetrofitClient.apiService.visualQuery(filePart, queryPart, "Bearer $token")
+                val englishDescription = vlmResponse.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Response: $description", timestamp, false)
-                messageList.add(message)
+                val englishMessage = Message("Response (English): $englishDescription", timestamp, false)
+                messageList.add(englishMessage)
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+                textToSpeech(englishDescription, englishMessage) // TTS for English
+
+                // Step 2: Translate to target language
+                val translationRequest = TranslationRequest(listOf(englishDescription), "eng_Latn", tgtLang)
+                val translationResponse = RetrofitClient.apiService.translate(translationRequest, "Bearer $token")
+                val translatedText = translationResponse.translations.joinToString("\n")
+                val translatedMessage = Message("Translation ($selectedLanguage): $translatedText", timestamp, false)
+                messageList.add(translatedMessage)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+                textToSpeech(translatedText, translatedMessage) // TTS for translation
+
                 if (messageList.size == 2) { // First upload
                     Toast.makeText(this@DocsActivity, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Log.e("DocsActivity", "VLM failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e("DocsActivity", "Processing failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Image query or translation error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
                 imageFile.delete()
+            }
+        }
+    }
+
+    private fun textToSpeech(text: String, message: Message) {
+        if (!prefs.getBoolean("tts_enabled", false)) return
+        val token = prefs.getString("access_token", null) ?: return
+        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
+            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
+
+        val ttsRequest = TTSRequest(text, voice, "ai4bharat/indic-parler-tts", "mp3", 1.0)
+
+        lifecycleScope.launch {
+            ttsProgressBar.visibility = View.VISIBLE
+            try {
+                val response = RetrofitClient.apiService.textToSpeech(ttsRequest, "Bearer $token")
+                val audioBytes = response.byteStream().readBytes()
+                if (audioBytes.isNotEmpty()) {
+                    val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                    FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
+                    if (audioFile.exists() && audioFile.length() > 0) {
+                        message.audioFile = audioFile
+                        val messageIndex = messageList.indexOf(message)
+                        if (messageIndex != -1) {
+                            messageAdapter.notifyItemChanged(messageIndex)
+                        }
+                        if (autoPlay) {
+                            playAudio(audioFile)
+                        }
+                    } else {
+                        Toast.makeText(this@DocsActivity, "Audio file creation failed", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this@DocsActivity, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("DocsActivity", "TTS failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                ttsProgressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        message.audioFile?.let { audioFile ->
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                button.setImageResource(android.R.drawable.ic_media_play)
+            } else {
+                playAudio(audioFile)
+                button.setImageResource(R.drawable.ic_media_stop)
+            }
+        }
+    }
+
+    private fun playAudio(audioFile: File) {
+        if (!audioFile.exists()) {
+            Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        mediaPlayer?.release()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(audioFile.absolutePath)
+            prepare()
+            start()
+            val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
+            if (messageIndex != -1) {
+                val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
+            }
+            setOnCompletionListener {
+                it.release()
+                mediaPlayer = null
+                if (messageIndex != -1) {
+                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
+                    holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
+                }
+            }
+            setOnErrorListener { _, what, extra ->
+                Toast.makeText(this@DocsActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
+                true
             }
         }
     }
@@ -401,17 +524,25 @@ class DocsActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        messageList.forEach { it.audioFile?.delete() }
+    }
+
     data class Message(
         val text: String,
         val timestamp: String,
         val isQuery: Boolean,
-        val imageUri: Uri? = null
+        val imageUri: Uri? = null,
+        var audioFile: File? = null // Added for TTS
     )
 
     class MessageAdapter(
         private val messages: MutableList<Message>,
         private val onLongClick: (Int) -> Unit,
-        private val onThumbnailClick: (Message, ImageButton) -> Unit
+        private val onClick: (Message, ImageButton) -> Unit // Handles both thumbnail and audio clicks
     ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
         class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -457,13 +588,20 @@ class DocsActivity : AppCompatActivity() {
                 holder.thumbnailImage.visibility = View.VISIBLE
                 holder.thumbnailImage.setImageURI(message.imageUri)
                 holder.thumbnailImage.setOnClickListener {
-                    onThumbnailClick(message, holder.audioControlButton)
+                    onClick(message, holder.audioControlButton)
                 }
+                holder.audioControlButton.visibility = View.GONE
+            } else if (!message.isQuery && message.audioFile != null) {
+                holder.thumbnailImage.visibility = View.GONE
+                holder.audioControlButton.visibility = View.VISIBLE
+                holder.audioControlButton.setOnClickListener {
+                    onClick(message, holder.audioControlButton)
+                }
+                holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
             } else {
                 holder.thumbnailImage.visibility = View.GONE
+                holder.audioControlButton.visibility = View.GONE
             }
-
-            holder.audioControlButton.visibility = View.GONE
 
             val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
             holder.itemView.startAnimation(animation)

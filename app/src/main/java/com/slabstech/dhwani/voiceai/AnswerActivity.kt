@@ -36,6 +36,7 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.text.Editable
 import android.util.Log
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -46,6 +47,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+import com.slabstech.dhwani.voiceai.Message
+import com.slabstech.dhwani.voiceai.MessageAdapter
 
 class AnswerActivity : AppCompatActivity() {
 
@@ -491,7 +494,19 @@ class AnswerActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                textToSpeech(answerText, message)
+                //textToSpeech(answerText, message)
+
+                SpeechUtils.textToSpeech(
+                    context = this@AnswerActivity, // First parameter: Context
+                    scope = lifecycleScope,        // Second parameter: LifecycleCoroutineScope
+                    text = answerText,
+                    message = message,
+                    recyclerView = historyRecyclerView,
+                    adapter = messageAdapter,
+                    ttsProgressBarVisibility = { visible ->
+                        ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                    }
+                )
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Chat failed: ${e.message}", e)
                 Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -501,51 +516,6 @@ class AnswerActivity : AppCompatActivity() {
         }
     }
 
-    private fun textToSpeech(text: String, message: Message) {
-        if (!prefs.getBoolean("tts_enabled", false)) return
-        val token = prefs.getString("access_token", null) ?: return
-        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
-            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
-
-        lifecycleScope.launch {
-            ttsProgressBar.visibility = View.VISIBLE
-            try {
-                val response = RetrofitClient.apiService.textToSpeech(
-                    input = text,
-                    voice = voice,
-                    model = "ai4bharat/indic-parler-tts",
-                    responseFormat = "mp3",
-                    speed = 1.0,
-                    token = "Bearer $token"
-                )
-                val audioBytes = response.byteStream().readBytes()
-                if (audioBytes.isNotEmpty()) {
-                    val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
-                    FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
-                    if (audioFile.exists() && audioFile.length() > 0) {
-                        message.audioFile = audioFile
-                        val messageIndex = messageList.indexOf(message)
-                        if (messageIndex != -1) {
-                            messageAdapter.notifyItemChanged(messageIndex)
-                        }
-                        if (autoPlay) {
-                            playAudio(audioFile)
-                        }
-                    } else {
-                        Toast.makeText(this@AnswerActivity, "Audio file creation failed", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(this@AnswerActivity, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("AnswerActivity", "TTS failed: ${e.message}", e)
-                Toast.makeText(this@AnswerActivity, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
-            } finally {
-                ttsProgressBar.visibility = View.GONE
-            }
-        }
-    }
 
     private var mediaPlayer: MediaPlayer? = null
 
@@ -562,49 +532,18 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        message.audioFile?.let { audioFile ->
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-                mediaPlayer = null
-                button.setImageResource(android.R.drawable.ic_media_play)
-            } else {
-                playAudio(audioFile)
-                button.setImageResource(R.drawable.ic_media_stop)
-            }
-        }
+        mediaPlayer = SpeechUtils.toggleAudioPlayback(
+            context = this,
+            message = message,
+            button = button,
+            recyclerView = historyRecyclerView,
+            adapter = messageAdapter,
+            mediaPlayer = mediaPlayer,
+            playIconResId = android.R.drawable.ic_media_play,
+            stopIconResId = R.drawable.ic_media_stop
+        )
     }
 
-    private fun playAudio(audioFile: File) {
-        if (!audioFile.exists()) {
-            Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(audioFile.absolutePath)
-            prepare()
-            start()
-            val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
-            if (messageIndex != -1) {
-                val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
-                holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
-            }
-            setOnCompletionListener {
-                it.release()
-                mediaPlayer = null
-                if (messageIndex != -1) {
-                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
-                    holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
-                }
-            }
-            setOnErrorListener { _, what, extra ->
-                Toast.makeText(this@AnswerActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
-                true
-            }
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -620,86 +559,9 @@ class AnswerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isRecording) {
-            isRecording = false
-        }
-        audioRecord?.release()
-        audioRecord = null
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
     }
 
-    data class Message(
-        val text: String,
-        val timestamp: String,
-        val isQuery: Boolean,
-        var audioFile: File? = null
-    )
-
-    class MessageAdapter(
-        private val messages: MutableList<Message>,
-        private val onLongClick: (Int) -> Unit,
-        private val onAudioControlClick: (Message, ImageButton) -> Unit
-    ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
-
-        class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val messageText: TextView = itemView.findViewById(R.id.messageText)
-            val timestampText: TextView = itemView.findViewById(R.id.timestampText)
-            val messageContainer: android.widget.LinearLayout = itemView.findViewById(R.id.messageContainer)
-            val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
-            return MessageViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-            val message = messages[position]
-            holder.messageText.text = message.text
-            holder.timestampText.text = message.timestamp
-
-            val layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
-            holder.messageContainer.layoutParams = layoutParams
-
-            val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)?.mutate()
-            backgroundDrawable?.let {
-                it.setTint(ContextCompat.getColor(
-                    holder.itemView.context,
-                    if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
-                ))
-                holder.messageText.background = it
-                holder.messageText.elevation = 2f
-                holder.messageText.setPadding(16, 16, 16, 16)
-            }
-
-            holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
-            holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
-
-            if (!message.isQuery && message.audioFile != null) {
-                holder.audioControlButton.visibility = View.VISIBLE
-                holder.audioControlButton.setOnClickListener {
-                    onAudioControlClick(message, holder.audioControlButton)
-                }
-                holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
-            } else {
-                holder.audioControlButton.visibility = View.GONE
-            }
-
-            val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
-            holder.itemView.startAnimation(animation)
-
-            holder.itemView.setOnLongClickListener {
-                onLongClick(position)
-                true
-            }
-        }
-
-        override fun getItemCount(): Int = messages.size
-    }
 }

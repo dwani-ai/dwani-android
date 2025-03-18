@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,18 +28,17 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
+import android.util.Log
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import org.json.JSONObject
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.TimeUnit
 
 class DocsActivity : AppCompatActivity() {
 
@@ -51,12 +51,8 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private val VLM_API_ENDPOINT = "https://slabstech-dhwani-server.hf.space/v1/visual_query/"
-
-    //private val VLM_API_ENDPOINT = "http://:7860/v1/visual_query/"
-
-    private val RETRY_DELAY_MS = 2000L
     private var lastImageUri: Uri? = null
+    private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
@@ -75,12 +71,13 @@ class DocsActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
+
+        fetchAccessToken()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -139,9 +136,22 @@ class DocsActivity : AppCompatActivity() {
             }
             bottomNavigation.selectedItemId = R.id.nav_docs
         } catch (e: Exception) {
-            android.util.Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
+            Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
+        }
+    }
+
+    private fun fetchAccessToken() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.login(LoginRequest("testuser", "password123"))
+                prefs.edit().putString("access_token", response.access_token).apply()
+                Log.d("DocsActivity", "Token fetched: ${response.access_token}")
+            } catch (e: Exception) {
+                Log.e("DocsActivity", "Token fetch failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Authentication failed", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -186,13 +196,10 @@ class DocsActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        android.util.Log.d("DocsActivity", "Permission result: requestCode=$requestCode, permissions=${permissions.joinToString()}, grantResults=${grantResults.joinToString()}")
         if (requestCode == STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            android.util.Log.d("DocsActivity", "Storage permission granted")
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
             pickImageLauncher.launch(intent)
         } else {
-            android.util.Log.w("DocsActivity", "Storage permission denied")
             val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
@@ -216,28 +223,24 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun processImage(uri: Uri, query: String) {
-        runOnUiThread { progressBar.visibility = View.VISIBLE }
+        progressBar.visibility = View.VISIBLE
 
-        Thread {
+        lifecycleScope.launch {
             try {
                 val imageFile = uriToFile(uri)
                 if (imageFile == null || !imageFile.exists()) {
-                    runOnUiThread {
-                        Toast.makeText(this, "Failed to process image file", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
-                    return@Thread
+                    Toast.makeText(this@DocsActivity, "Failed to process image file", Toast.LENGTH_SHORT).show()
+                    progressBar.visibility = View.GONE
+                    return@launch
                 }
 
                 getImageDescription(imageFile, query)
             } catch (e: Exception) {
-                android.util.Log.e("DocsActivity", "Image processing error: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("DocsActivity", "Image processing error: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
+                progressBar.visibility = View.GONE
             }
-        }.start()
+        }
     }
 
     private fun uriToFile(uri: Uri): File? {
@@ -249,95 +252,39 @@ class DocsActivity : AppCompatActivity() {
             }
             tempFile
         } catch (e: Exception) {
-            android.util.Log.e("DocsActivity", "Failed to convert Uri to File: ${e.message}", e)
+            Log.e("DocsActivity", "Failed to convert Uri to File: ${e.message}", e)
             null
         }
     }
 
     private fun getImageDescription(imageFile: File, query: String) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val token = prefs.getString("access_token", null) ?: return
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
+        val requestFile = imageFile.asRequestBody("image/jpeg".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", imageFile.name, requestFile)
+        val queryPart = query.toRequestBody("text/plain".toMediaType())
 
-        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
-        val requestBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "file", imageFile.name,
-                imageFile.asRequestBody("image/jpeg".toMediaType())
-            )
-            .addFormDataPart("query", query)
-            .build()
-
-        val request = Request.Builder()
-            .url(VLM_API_ENDPOINT)
-            .header("accept", "application/json")
-            .header("X-API-Key", dhwaniApiKey)
-            .post(requestBody)
-            .build()
-
-        Thread {
+        lifecycleScope.launch {
             try {
-                var attempts = 0
-                var success = false
-                var responseBody: String? = null
-
-                while (attempts < maxRetries && !success) {
-                    try {
-                        val response = client.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            responseBody = response.body?.string()
-                            android.util.Log.d("DocsActivity", "VLM Response: $responseBody")
-                            success = true
-                        } else {
-                            attempts++
-                            android.util.Log.w("DocsActivity", "API failed with code: ${response.code}")
-                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                        }
-                    } catch (e: Exception) {
-                        attempts++
-                        android.util.Log.e("DocsActivity", "Network error: ${e.message}")
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                    }
-                }
-
-                if (success && responseBody != null) {
-                    val json = JSONObject(responseBody)
-                    val description = json.optString("answer", "No description available")
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Response: $description", timestamp, false)
-                    runOnUiThread {
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        historyRecyclerView.requestLayout()
-                        scrollToLatestMessage()
-                        progressBar.visibility = View.GONE
-                        if (messageList.size == 2) { // First upload
-                            Toast.makeText(this, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this, "Image query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
+                val response = RetrofitClient.apiService.visualQuery(filePart, queryPart, "Bearer $token")
+                val description = response.answer
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Response: $description", timestamp, false)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+                if (messageList.size == 2) { // First upload
+                    Toast.makeText(this@DocsActivity, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("DocsActivity", "VLM parsing error: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("DocsActivity", "VLM failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
+                progressBar.visibility = View.GONE
                 imageFile.delete()
             }
-        }.start()
+        }
     }
 
     private fun showCustomQueryDialog(imageUri: Uri) {
@@ -464,7 +411,7 @@ class DocsActivity : AppCompatActivity() {
     class MessageAdapter(
         private val messages: MutableList<Message>,
         private val onLongClick: (Int) -> Unit,
-        private val onThumbnailClick: (Message, ImageButton) -> Unit // Changed to onThumbnailClick
+        private val onThumbnailClick: (Message, ImageButton) -> Unit
     ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
         class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -510,7 +457,7 @@ class DocsActivity : AppCompatActivity() {
                 holder.thumbnailImage.visibility = View.VISIBLE
                 holder.thumbnailImage.setImageURI(message.imageUri)
                 holder.thumbnailImage.setOnClickListener {
-                    onThumbnailClick(message, holder.audioControlButton) // Trigger custom query
+                    onThumbnailClick(message, holder.audioControlButton)
                 }
             } else {
                 holder.thumbnailImage.visibility = View.GONE

@@ -8,7 +8,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -25,6 +25,7 @@ data class ChatResponse(val response: String)
 data class TTSRequest(val input: String, val voice: String, val model: String, val response_format: String, val speed: Double)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
+data class VisualQueryResponse(val answer: String)
 
 // API Service Interface
 interface ApiService {
@@ -59,6 +60,14 @@ interface ApiService {
         @Body request: TranslationRequest,
         @Header("Authorization") token: String
     ): TranslationResponse
+
+    @Multipart
+    @POST("v1/visual_query/")
+    suspend fun visualQuery(
+        @Part file: MultipartBody.Part,
+        @Part("query") query: RequestBody,
+        @Header("Authorization") token: String
+    ): VisualQueryResponse
 }
 
 // Retrofit Client

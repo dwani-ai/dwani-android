@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -33,108 +34,19 @@ import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
-import android.media.MediaPlayer
 import android.text.Editable
 import android.util.Log
-import com.google.gson.GsonBuilder
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.ResponseBody
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.*
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
-// Data Models
-data class LoginRequest(val username: String, val password: String)
-data class TokenResponse(val access_token: String, val token_type: String)
-data class TranscriptionResponse(val text: String)
-data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
-data class ChatResponse(val response: String)
-data class TTSRequest(val input: String, val voice: String, val model: String, val response_format: String, val speed: Double)
-
-// API Service Interface
-interface ApiService {
-    @POST("v1/token")
-    suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
-
-    @POST("v1/refresh")
-    suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
-
-    @Multipart
-    @POST("v1/transcribe/")
-    suspend fun transcribeAudio(
-        @Part file: MultipartBody.Part,
-        @Query("language") language: String,
-        @Header("Authorization") token: String
-    ): TranscriptionResponse
-
-    @POST("v1/chat")
-    suspend fun chat(
-        @Body chatRequest: ChatRequest,
-        @Header("Authorization") token: String
-    ): ChatResponse
-
-    @POST("v1/audio/speech")
-    suspend fun textToSpeech(
-        @Body ttsRequest: TTSRequest,
-        @Header("Authorization") token: String
-    ): ResponseBody
-}
-
-// Retrofit Client with Token Refresh
-object RetrofitClient {
-    private const val BASE_URL = "https://slabstech-dhwani-server.hf.space/"
-    private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(DhwaniApp.context) } // Replace with your app context
-
-    private val authenticator = object : okhttp3.Authenticator {
-        override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-            val currentToken = prefs.getString("access_token", null) ?: return null
-            val refreshResponse = runBlocking {
-                apiService.refreshToken("Bearer $currentToken")
-            }
-            val newToken = refreshResponse.access_token
-            prefs.edit().putString("access_token", newToken).apply()
-            return response.request.newBuilder()
-                .header("Authorization", "Bearer $newToken")
-                .build()
-        }
-    }
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .authenticator(authenticator)
-        .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY)) // For debugging
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
-
-    val apiService: ApiService = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create(GsonBuilder().setLenient().create()))
-        .build()
-        .create(ApiService::class.java)
-}
-
-// Replace with your Application class to provide context
-object DhwaniApp {
-    lateinit var context: Context
-}
-
-// Main Activity
 class AnswerActivity : AppCompatActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
@@ -169,7 +81,6 @@ class AnswerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_answer)
 
-        // Fetch initial token
         fetchAccessToken()
 
         try {
@@ -386,17 +297,13 @@ class AnswerActivity : AppCompatActivity() {
             .setTitle("Message Options")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> { // Delete
+                    0 -> {
                         messageList.removeAt(position)
                         messageAdapter.notifyItemRemoved(position)
                         messageAdapter.notifyItemRangeChanged(position, messageList.size)
                     }
-                    1 -> { // Share
-                        shareMessage(message)
-                    }
-                    2 -> { // Copy
-                        copyMessage(message)
-                    }
+                    1 -> shareMessage(message)
+                    2 -> copyMessage(message)
                 }
             }
             .setNegativeButton("Cancel", null)

@@ -21,6 +21,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -30,26 +31,17 @@ import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
-import android.widget.LinearLayout
-import androidx.coordinatorlayout.widget.CoordinatorLayout
-import com.google.android.material.appbar.AppBarLayout
-import com.slabstech.dhwani.voiceai.AnswerActivity.Message
+import android.util.Log
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.TimeUnit
 
 class TranslateActivity : AppCompatActivity() {
 
@@ -68,22 +60,23 @@ class TranslateActivity : AppCompatActivity() {
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val RETRY_DELAY_MS = 2000L
     private val MIN_RECORDING_DURATION_MS = 1000L
     private var recordingStartTime: Long = 0L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
+    private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
         currentTheme = isDarkTheme
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translate)
+
+        fetchAccessToken()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -106,7 +99,6 @@ class TranslateActivity : AppCompatActivity() {
                 visibility = View.VISIBLE
                 setBackgroundColor(ContextCompat.getColor(this@TranslateActivity, android.R.color.transparent))
             }
-            android.util.Log.d("TranslateActivity", "RecyclerView initialized, Adapter item count: ${messageAdapter.itemCount}")
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
@@ -133,22 +125,18 @@ class TranslateActivity : AppCompatActivity() {
             }
 
             sendButton.setOnClickListener {
-                try {
-                    val query = textQueryInput.text.toString().trim()
-                    if (query.isNotEmpty()) {
-                        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                        val message = Message("Input: $query", timestamp, true)
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        historyRecyclerView.requestLayout()
-                        scrollToLatestMessage()
-                        getTranslationResponse(query)
-                        textQueryInput.text.clear()
-                    } else {
-                        Toast.makeText(this, "Please enter a sentence", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("TranslateActivity", "Crash in sendButton click: ${e.message}", e)
+                val query = textQueryInput.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    val message = Message("Input: $query", timestamp, true)
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    historyRecyclerView.requestLayout()
+                    scrollToLatestMessage()
+                    getTranslationResponse(query)
+                    textQueryInput.text.clear()
+                } else {
+                    Toast.makeText(this, "Please enter a sentence", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -194,9 +182,22 @@ class TranslateActivity : AppCompatActivity() {
             }
             bottomNavigation.selectedItemId = R.id.nav_translate
         } catch (e: Exception) {
-            android.util.Log.e("TranslateActivity", "Crash in onCreate: ${e.message}", e)
+            Log.e("TranslateActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
+        }
+    }
+
+    private fun fetchAccessToken() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.login(LoginRequest("testuser", "password123"))
+                prefs.edit().putString("access_token", response.access_token).apply()
+                Log.d("TranslateActivity", "Token fetched: ${response.access_token}")
+            } catch (e: Exception) {
+                Log.e("TranslateActivity", "Token fetch failed: ${e.message}", e)
+                Toast.makeText(this@TranslateActivity, "Authentication failed", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -204,7 +205,6 @@ class TranslateActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.main_menu, menu)
         menu.findItem(R.id.action_auto_scroll)?.isChecked = true
 
-        // Setup Spinner in Toolbar
         val targetLanguageItem = menu.findItem(R.id.action_target_language)
         targetLanguageSpinner = targetLanguageItem.actionView as Spinner
         val adapter = ArrayAdapter.createFromResource(
@@ -254,7 +254,6 @@ class TranslateActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         if (currentTheme != isDarkTheme) {
             currentTheme = isDarkTheme
@@ -370,12 +369,10 @@ class TranslateActivity : AppCompatActivity() {
                 val duration = System.currentTimeMillis() - recordingStartTime
                 if (duration >= MIN_RECORDING_DURATION_MS) {
                     writeWavFile(recordedData.toByteArray())
-                    if (audioFile != null && audioFile!!.exists()) {
-                        sendAudioToApi(audioFile)
-                    }
+                    audioFile?.let { sendAudioToApi(it) }
                 } else {
                     runOnUiThread {
-                        Toast.makeText(this, "Recording too short, try again", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Recording too short", Toast.LENGTH_SHORT).show()
                     }
                     audioFile?.delete()
                 }
@@ -429,126 +426,38 @@ class TranslateActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendAudioToApi(audioFile: File?) {
-        if (audioFile == null || !audioFile.exists()) {
-            android.util.Log.e("AnswerActivity", "Audio file is null or does not exist")
-            runOnUiThread { Toast.makeText(this, "Audio file not found", Toast.LENGTH_SHORT).show() }
-            return
-        }
-
-        runOnUiThread { progressBar.visibility = View.VISIBLE }
-
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+    private fun sendAudioToApi(audioFile: File) {
+        val token = prefs.getString("access_token", null) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
-        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        //val transcriptionApiEndpoint = "https://slabstech-dhwani-server.hf.space/v1/transcribe/" // Add trailing slash
 
-        val transcriptionApiEndpoint = prefs.getString("transcription_api_endpoint", "https://slabstech-dhwani-server.hf.space/v1/transcribe/") ?: "https://slabstech-dhwani-server.hf.space/v1/transcribe/"
+        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
 
-
-        val dhwaniApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
-
-        // Configure OkHttp with redirect handling
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .followRedirects(true) // Ensure redirects are followed
-            .followSslRedirects(true)
-            .addInterceptor { chain ->
-                val request = chain.request()
-                val response = chain.proceed(request)
-                android.util.Log.d("AnswerActivity", "Request URL: ${request.url}, Method: ${request.method}, Response Code: ${response.code}")
-                response
-            }
-            .build()
-
-        val requestBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "file", audioFile.name,
-                audioFile.asRequestBody("audio/x-wav".toMediaType())
-            )
-            .build()
-
-        val request = Request.Builder()
-            .url("$transcriptionApiEndpoint?language=$language") // Trailing slash included
-            .header("accept", "application/json")
-            .header("X-API-Key", dhwaniApiKey)
-            .post(requestBody)
-            .build()
-
-        Thread {
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
             try {
-                var attempts = 0
-                var success = false
-                var responseBody: String? = null
-
-                while (attempts < maxRetries && !success) {
-                    try {
-                        val response = client.newCall(request).execute()
-                        responseBody = response.body?.string()
-                        android.util.Log.d("AnswerActivity", "Transcription response: code=${response.code}, body=$responseBody")
-
-                        if (response.isSuccessful) {
-                            success = true
-                        } else {
-                            attempts++
-                            android.util.Log.w("AnswerActivity", "Transcription failed: ${response.code} - ${response.message}")
-                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                            runOnUiThread {
-                                Toast.makeText(this, "Transcription failed: ${response.code}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } catch (e: IOException) {
-                        attempts++
-                        android.util.Log.e("AnswerActivity", "Network error on attempt $attempts: ${e.message}", e)
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                        runOnUiThread {
-                            Toast.makeText(this, "Network error: ${e.message}, retrying ($attempts/$maxRetries)", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-
-                if (success && responseBody != null) {
-                    val json = JSONObject(responseBody)
-                    val voiceQueryText = json.optString("text", "")
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    if (voiceQueryText.isNotEmpty() && !json.has("error")) {
-                        lastQuery = voiceQueryText
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true)
-                        runOnUiThread {
-                            messageList.add(message)
-                            messageAdapter.notifyItemInserted(messageList.size - 1)
-                            historyRecyclerView.requestLayout()
-                            scrollToLatestMessage()
-                            progressBar.visibility = View.GONE
-                            getTranslationResponse(voiceQueryText)
-                        }
-                    } else {
-                        android.util.Log.w("AnswerActivity", "Transcription response empty or invalid: $responseBody")
-                        runOnUiThread {
-                            Toast.makeText(this, "Voice Query empty or invalid, try again", Toast.LENGTH_SHORT).show()
-                            progressBar.visibility = View.GONE
-                        }
-                    }
+                val response = RetrofitClient.apiService.transcribeAudio(filePart, language, "Bearer $token")
+                val voiceQueryText = response.text
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                if (voiceQueryText.isNotEmpty()) {
+                    lastQuery = voiceQueryText
+                    val message = Message("Voice Query: $voiceQueryText", timestamp, true)
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    historyRecyclerView.requestLayout()
+                    scrollToLatestMessage()
+                    getTranslationResponse(voiceQueryText)
                 } else {
-                    android.util.Log.e("AnswerActivity", "Transcription failed after $maxRetries retries")
-                    runOnUiThread {
-                        Toast.makeText(this, "Voice Query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
+                    Toast.makeText(this@TranslateActivity, "Voice Query empty", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AnswerActivity", "Crash in sendAudioToApi: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("TranslateActivity", "Transcription failed: ${e.message}", e)
+                Toast.makeText(this@TranslateActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
-                audioFile.delete() // Clean up temporary file
+                progressBar.visibility = View.GONE
+                audioFile.delete()
             }
-        }.start()
+        }
     }
 
     private fun scrollToLatestMessage() {
@@ -564,23 +473,10 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun getTranslationResponse(input: String) {
-        runOnUiThread { progressBar.visibility = View.VISIBLE }
-
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val token = prefs.getString("access_token", null) ?: return
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
-        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val translateApiEndpoint = "https://slabstech-dhwani-server.hf.space/v1/translate" // No query params
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
-
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
-        // Split input into sentences of 15 words or fewer
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
         val sentences = mutableListOf<String>()
         var currentSentence = mutableListOf<String>()
@@ -604,175 +500,27 @@ class TranslateActivity : AppCompatActivity() {
             sentences.add(currentSentence.joinToString(" "))
         }
 
-        android.util.Log.d("TranslateActivity", "Split sentences: $sentences")
+        val translationRequest = TranslationRequest(sentences, srcLang, tgtLang)
 
-        val jsonMediaType = "application/json".toMediaType()
-        val requestBody = JSONObject().apply {
-            val sentencesArray = JSONArray()
-            sentences.forEach { sentencesArray.put(it) }
-            put("sentences", sentencesArray)
-            put("src_lang", srcLang)
-            put("tgt_lang", tgtLang)
-        }.toString().toRequestBody(jsonMediaType)
-
-        val request = Request.Builder()
-            .url(translateApiEndpoint) // No query params here
-            .header("accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header("X-API-Key", dhwaniApiKey)
-            .post(requestBody)
-            .build()
-
-        Thread {
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
             try {
-                var attempts = 0
-                var success = false
-                var responseBody: String? = null
-
-                while (attempts < maxRetries && !success) {
-                    try {
-                        val response = client.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            responseBody = response.body?.string()
-                            android.util.Log.d("TranslateActivity", "Raw API Response: $responseBody")
-                            success = true
-                        } else {
-                            attempts++
-                            android.util.Log.w("TranslateActivity", "API failed with code: ${response.code}")
-                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                        }
-                    } catch (e: IOException) {
-                        attempts++
-                        android.util.Log.e("TranslateActivity", "Network error: ${e.message}")
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                    }
-                }
-
-                if (success && responseBody != null) {
-                    val json = JSONObject(responseBody)
-                    val translations = json.getJSONArray("translations")
-                    val translatedText = (0 until translations.length()).joinToString("\n") { translations.getString(it) }
-                    android.util.Log.d("TranslateActivity", "Parsed Translation: $translatedText")
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Translation: $translatedText", timestamp, false)
-                    runOnUiThread {
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        // TODO - add speech out for Translation
-                        //textToSpeech(translatedText, message)
-
-                        historyRecyclerView.requestLayout()
-                        scrollToLatestMessage()
-                        progressBar.visibility = View.GONE
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this, "Translation failed after $maxRetries retries. Check network or API status.", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
-                }
+                val response = RetrofitClient.apiService.translate(translationRequest, "Bearer $token")
+                val translatedText = response.translations.joinToString("\n")
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Translation: $translatedText", timestamp, false)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
             } catch (e: Exception) {
-                android.util.Log.e("TranslateActivity", "Translation parsing error: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Translation error: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("TranslateActivity", "Translation failed: ${e.message}", e)
+                Toast.makeText(this@TranslateActivity, "Translation error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                progressBar.visibility = View.GONE
             }
-        }.start()
+        }
     }
-/*
-    private fun textToSpeech(text: String, message: com.slabstech.dhwani.voiceai.AnswerActivity.Message) {
-        // Temporarily disabled to isolate crash issues - uncomment to re-enable after testing
-        //return
-
-
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        if (!prefs.getBoolean("tts_enabled", false)) return
-        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
-
-        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
-            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val ttsApiEndpoint = "https://slabstech-dhwani-server.hf.space/v1/audio/speech"
-        val apiKey = prefs.getString("chat_api_key", "dhwani-version-api-server-0-0-1") ?: "dhwani-version-api-server-0-0-1"
-
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
-        val jsonMediaType = "application/json".toMediaType()
-        val requestBody = JSONObject().apply {
-            put("input", text)
-            put("voice", voice)
-            put("model", "ai4bharat/indic-parler-tts")
-            put("response_format", "mp3")
-            put("speed", 1.0)
-        }.toString().toRequestBody(jsonMediaType)
-
-        val request = Request.Builder()
-            .url(ttsApiEndpoint)
-            .header("X-API-Key", apiKey)
-            .header("Content-Type", "application/json")
-            .post(requestBody)
-            .build()
-
-        runOnUiThread { ttsProgressBar.visibility = View.VISIBLE }
-
-        Thread {
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val audioBytes = response.body?.bytes()
-                    runOnUiThread {
-                        try {
-                            if (audioBytes != null && audioBytes.isNotEmpty()) {
-                                val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
-                                FileOutputStream(audioFile).use { fos ->
-                                    fos.write(audioBytes)
-                                }
-                                if (audioFile.exists() && audioFile.length() > 0) {
-                                    message.audioFile = audioFile
-                                    ttsProgressBar.visibility = View.GONE
-                                    val messageIndex = messageList.indexOf(message)
-                                    if (messageIndex != -1) {
-                                        messageAdapter.notifyItemChanged(messageIndex)
-                                        android.util.Log.d("TextToSpeech", "Notified adapter for index: $messageIndex")
-                                    }
-                                    if (autoPlay) {
-                                        playAudio(audioFile)
-                                    }
-                                } else {
-                                    ttsProgressBar.visibility = View.GONE
-                                    Toast.makeText(this, "Audio file creation failed", Toast.LENGTH_SHORT).show()
-                                }
-                            } else {
-                                ttsProgressBar.visibility = View.GONE
-                                Toast.makeText(this, "TTS API returned empty audio data", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("AnswerActivity", "Crash in textToSpeech UI update: ${e.message}", e)
-                            ttsProgressBar.visibility = View.GONE
-                            Toast.makeText(this, "TTS UI error: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } else {
-                    runOnUiThread {
-                        ttsProgressBar.visibility = View.GONE
-                        Toast.makeText(this, "TTS API failed: ${response.code} - ${response.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: IOException) {
-                android.util.Log.e("AnswerActivity", "Crash in textToSpeech network call: ${e.message}", e)
-                runOnUiThread {
-                    ttsProgressBar.visibility = View.GONE
-                    Toast.makeText(this, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-
-    }
-*/
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

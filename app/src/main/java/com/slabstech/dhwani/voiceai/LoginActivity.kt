@@ -45,13 +45,14 @@ class LoginActivity : AppCompatActivity() {
     private fun fetchAccessToken(email: String) {
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.apiService(this@LoginActivity).login(LoginRequest(email, email))
+                val response = RetrofitClient.loginApiService(this@LoginActivity).login(LoginRequest(email, email))
                 prefs.edit().putString("access_token", response.access_token).apply()
                 Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this@LoginActivity, DocsActivity::class.java))
+                startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
                 finish()
             } catch (e: Exception) {
                 Toast.makeText(this@LoginActivity, "Login failed: ${e.message}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
             }
         }
     }

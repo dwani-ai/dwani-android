@@ -13,13 +13,13 @@ object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-internal-api-server.hf.space/"
     private const val ASR_BASE_URL = "https://slabstech-asr-indic-server-cpu.hf.space/"
 
-    // Single OkHttpClient without authentication
     private fun getOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
-                    .header("User-Agent", "DhwaniVoiceAI/1.0.3") // Consistent User-Agent
+                    .header("User-Agent", "DhwaniVoiceAI/1.0.3")
+                    .header("accept", "application/json") // Added for visual query
                     .build()
                 chain.proceed(request)
             }
@@ -29,7 +29,6 @@ object RetrofitClient {
             .build()
     }
 
-    // API service for general calls (chat, translate, TTS, visual query)
     fun apiService(context: Context): ApiService {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val baseUrl = prefs.getString("base_url", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
@@ -41,7 +40,6 @@ object RetrofitClient {
             .create(ApiService::class.java)
     }
 
-    // API service specifically for transcription
     fun transcriptionApiService(context: Context): ApiService {
         return Retrofit.Builder()
             .baseUrl(ASR_BASE_URL)

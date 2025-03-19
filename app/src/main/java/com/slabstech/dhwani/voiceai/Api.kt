@@ -33,7 +33,7 @@ interface ApiService {
     ): TranslationResponse
 
     @Multipart
-    @POST("v1/visual_query")
+    @POST("v1/visual_query/")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
         @Part("query") query: RequestBody,

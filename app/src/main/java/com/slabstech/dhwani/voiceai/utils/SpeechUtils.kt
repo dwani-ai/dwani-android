@@ -31,7 +31,6 @@ object SpeechUtils {
     ) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean("tts_enabled", false)) return
-        val token = prefs.getString("access_token", null) ?: return
         val voice = prefs.getString(
             "tts_voice",
             "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
@@ -46,8 +45,7 @@ object SpeechUtils {
                     voice = voice,
                     model = "ai4bharat/indic-parler-tts",
                     responseFormat = "mp3",
-                    speed = 1.0,
-                    token = "Bearer $token"
+                    speed = 1.0
                 )
                 val audioBytes = response.byteStream().readBytes()
                 if (audioBytes.isNotEmpty()) {
@@ -94,14 +92,10 @@ object SpeechUtils {
         onSuccess: (String) -> Unit,
         onError: (Exception) -> Unit
     ) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val token = prefs.getString("access_token", null) ?: return
-
         scope.launch {
             try {
                 val response = RetrofitClient.apiService(context).translate(
-                    TranslationRequest(sentences, srcLang, tgtLang),
-                    "Bearer $token"
+                    TranslationRequest(sentences, srcLang, tgtLang)
                 )
                 val translatedText = response.translations.joinToString("\n")
                 onSuccess(translatedText)

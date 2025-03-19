@@ -40,6 +40,9 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import com.slabstech.dhwani.voiceai.Message
+import com.slabstech.dhwani.voiceai.MessageAdapter
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class DocsActivity : AppCompatActivity() {
 
@@ -53,7 +56,7 @@ class DocsActivity : AppCompatActivity() {
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
     private var lastImageUri: Uri? = null
-    private var mediaPlayer: MediaPlayer? = null // For TTS playback
+    private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
@@ -93,7 +96,6 @@ class DocsActivity : AppCompatActivity() {
 
             setSupportActionBar(toolbar)
 
-            // Initialize TTS settings if not present
             if (!prefs.contains(AUTO_PLAY_KEY)) {
                 prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
             }
@@ -288,35 +290,38 @@ class DocsActivity : AppCompatActivity() {
         val queryPart = query.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
             try {
-                // Step 1: Get English description
-                val vlmResponse = RetrofitClient.apiService.visualQuery(filePart, queryPart, "Bearer $token")
-                val englishDescription = vlmResponse.answer
+                val response = RetrofitClient.apiService.visualQuery(
+                    file = filePart,
+                    query = queryPart,
+                    srcLang = "eng_Latn", // Assuming query is in English
+                    tgtLang = tgtLang,    // Target language from preferences
+                    token = "Bearer $token"
+                )
+                val description = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val englishMessage = Message("Response (English): $englishDescription", timestamp, false)
-                messageList.add(englishMessage)
+                val message = Message("Response ($selectedLanguage): $description", timestamp, false)
+                messageList.add(message)
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                textToSpeech(englishDescription, englishMessage) // TTS for English
+                SpeechUtils.textToSpeech(
+                    context = this@DocsActivity,
+                    scope = lifecycleScope,
+                    text = description,
+                    message = message,
+                    recyclerView = historyRecyclerView,
+                    adapter = messageAdapter,
+                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE }
+                )
 
-                // Step 2: Translate to target language
-                val translationRequest = TranslationRequest(listOf(englishDescription), "eng_Latn", tgtLang)
-                val translationResponse = RetrofitClient.apiService.translate(translationRequest, "Bearer $token")
-                val translatedText = translationResponse.translations.joinToString("\n")
-                val translatedMessage = Message("Translation ($selectedLanguage): $translatedText", timestamp, false)
-                messageList.add(translatedMessage)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                historyRecyclerView.requestLayout()
-                scrollToLatestMessage()
-                textToSpeech(translatedText, translatedMessage) // TTS for translation
-
-                if (messageList.size == 2) { // First upload
+                if (messageList.size == 1) {
                     Toast.makeText(this@DocsActivity, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Processing failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "Image query or translation error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@DocsActivity, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
                 imageFile.delete()
@@ -324,95 +329,17 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun textToSpeech(text: String, message: Message) {
-        if (!prefs.getBoolean("tts_enabled", false)) return
-        val token = prefs.getString("access_token", null) ?: return
-        val voice = prefs.getString("tts_voice", "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality.")
-            ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
-
-        lifecycleScope.launch {
-            ttsProgressBar.visibility = View.VISIBLE
-            try {
-                val response = RetrofitClient.apiService.textToSpeech(
-                    input = text,
-                    voice = voice,
-                    model = "ai4bharat/indic-parler-tts",
-                    responseFormat = "mp3",
-                    speed = 1.0,
-                    token = "Bearer $token"
-                )
-                val audioBytes = response.byteStream().readBytes()
-                if (audioBytes.isNotEmpty()) {
-                    val audioFile = File(cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
-                    FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
-                    if (audioFile.exists() && audioFile.length() > 0) {
-                        message.audioFile = audioFile
-                        val messageIndex = messageList.indexOf(message)
-                        if (messageIndex != -1) {
-                            messageAdapter.notifyItemChanged(messageIndex)
-                        }
-                        if (autoPlay) {
-                            playAudio(audioFile)
-                        }
-                    } else {
-                        Toast.makeText(this@DocsActivity, "Audio file creation failed", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(this@DocsActivity, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("DocsActivity", "TTS failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
-            } finally {
-                ttsProgressBar.visibility = View.GONE
-            }
-        }
-    }
-
     private fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        message.audioFile?.let { audioFile ->
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-                mediaPlayer = null
-                button.setImageResource(android.R.drawable.ic_media_play)
-            } else {
-                playAudio(audioFile)
-                button.setImageResource(R.drawable.ic_media_stop)
-            }
-        }
-    }
-
-    private fun playAudio(audioFile: File) {
-        if (!audioFile.exists()) {
-            Toast.makeText(this, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(audioFile.absolutePath)
-            prepare()
-            start()
-            val messageIndex = messageList.indexOfFirst { it.audioFile == audioFile }
-            if (messageIndex != -1) {
-                val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
-                holder?.audioControlButton?.setImageResource(R.drawable.ic_media_stop)
-            }
-            setOnCompletionListener {
-                it.release()
-                mediaPlayer = null
-                if (messageIndex != -1) {
-                    val holder = historyRecyclerView.findViewHolderForAdapterPosition(messageIndex) as? MessageAdapter.MessageViewHolder
-                    holder?.audioControlButton?.setImageResource(android.R.drawable.ic_media_play)
-                }
-            }
-            setOnErrorListener { _, what, extra ->
-                Toast.makeText(this@DocsActivity, "MediaPlayer error: what=$what, extra=$extra", Toast.LENGTH_LONG).show()
-                true
-            }
-        }
+        mediaPlayer = SpeechUtils.toggleAudioPlayback(
+            context = this,
+            message = message,
+            button = button,
+            recyclerView = historyRecyclerView,
+            adapter = messageAdapter,
+            mediaPlayer = mediaPlayer,
+            playIconResId = android.R.drawable.ic_media_play,
+            stopIconResId = R.drawable.ic_media_stop
+        )
     }
 
     private fun showCustomQueryDialog(imageUri: Uri) {
@@ -534,89 +461,5 @@ class DocsActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
-    }
-
-    data class Message(
-        val text: String,
-        val timestamp: String,
-        val isQuery: Boolean,
-        val imageUri: Uri? = null,
-        var audioFile: File? = null // Added for TTS
-    )
-
-    class MessageAdapter(
-        private val messages: MutableList<Message>,
-        private val onLongClick: (Int) -> Unit,
-        private val onClick: (Message, ImageButton) -> Unit // Handles both thumbnail and audio clicks
-    ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
-
-        class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val messageText: TextView = itemView.findViewById(R.id.messageText)
-            val timestampText: TextView = itemView.findViewById(R.id.timestampText)
-            val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
-            val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
-            val thumbnailImage: ImageView = itemView.findViewById(R.id.thumbnailImage)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
-            return MessageViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-            val message = messages[position]
-            holder.messageText.text = message.text
-            holder.timestampText.text = message.timestamp
-
-            val layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
-            holder.messageContainer.layoutParams = layoutParams
-
-            val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)?.mutate()
-            backgroundDrawable?.let {
-                it.setTint(ContextCompat.getColor(
-                    holder.itemView.context,
-                    if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
-                ))
-                holder.messageText.background = it
-                holder.messageText.elevation = 2f
-                holder.messageText.setPadding(16, 16, 16, 16)
-            }
-
-            holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
-            holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
-
-            if (message.isQuery && message.imageUri != null) {
-                holder.thumbnailImage.visibility = View.VISIBLE
-                holder.thumbnailImage.setImageURI(message.imageUri)
-                holder.thumbnailImage.setOnClickListener {
-                    onClick(message, holder.audioControlButton)
-                }
-                holder.audioControlButton.visibility = View.GONE
-            } else if (!message.isQuery && message.audioFile != null) {
-                holder.thumbnailImage.visibility = View.GONE
-                holder.audioControlButton.visibility = View.VISIBLE
-                holder.audioControlButton.setOnClickListener {
-                    onClick(message, holder.audioControlButton)
-                }
-                holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
-            } else {
-                holder.thumbnailImage.visibility = View.GONE
-                holder.audioControlButton.visibility = View.GONE
-            }
-
-            val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
-            holder.itemView.startAnimation(animation)
-
-            holder.itemView.setOnLongClickListener {
-                onLongClick(position)
-                true
-            }
-        }
-
-        override fun getItemCount(): Int = messages.size
     }
 }

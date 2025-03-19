@@ -66,10 +66,12 @@ interface ApiService {
     ): TranslationResponse
 
     @Multipart
-    @POST("v1/visual_query/")
+    @POST("v1/visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
         @Part("query") query: RequestBody,
+        @Query("src_lang") srcLang: String,
+        @Query("tgt_lang") tgtLang: String,
         @Header("Authorization") token: String
     ): VisualQueryResponse
 }

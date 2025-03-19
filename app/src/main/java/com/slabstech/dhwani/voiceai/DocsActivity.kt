@@ -10,10 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -40,8 +37,6 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import com.slabstech.dhwani.voiceai.Message
-import com.slabstech.dhwani.voiceai.MessageAdapter
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class DocsActivity : AppCompatActivity() {
@@ -83,7 +78,7 @@ class DocsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
 
-        fetchAccessToken()
+        checkAuthentication()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -157,16 +152,11 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchAccessToken() {
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.apiService.login(LoginRequest("testuser", "password123"))
-                prefs.edit().putString("access_token", response.access_token).apply()
-                Log.d("DocsActivity", "Token fetched: ${response.access_token}")
-            } catch (e: Exception) {
-                Log.e("DocsActivity", "Token fetch failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "Authentication failed", Toast.LENGTH_SHORT).show()
-            }
+    private fun checkAuthentication() {
+        val token = prefs.getString("access_token", null)
+        if (token == null) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
         }
     }
 
@@ -292,11 +282,11 @@ class DocsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.visualQuery(
+                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     file = filePart,
                     query = queryPart,
-                    srcLang = "eng_Latn", // Assuming query is in English
-                    tgtLang = tgtLang,    // Target language from preferences
+                    srcLang = "eng_Latn",
+                    tgtLang = tgtLang,
                     token = "Bearer $token"
                 )
                 val description = response.answer
@@ -396,8 +386,18 @@ class DocsActivity : AppCompatActivity() {
                 }
                 true
             }
+            R.id.action_logout -> {
+                logout()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun logout() {
+        prefs.edit().remove("access_token").apply()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 
     private fun showHistoryDialog() {

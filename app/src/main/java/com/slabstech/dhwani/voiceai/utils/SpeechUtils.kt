@@ -41,7 +41,7 @@ object SpeechUtils {
         scope.launch {
             ttsProgressBarVisibility(true)
             try {
-                val response = RetrofitClient.apiService.textToSpeech(
+                val response = RetrofitClient.apiService(context).textToSpeech(
                     input = text,
                     voice = voice,
                     model = "ai4bharat/indic-parler-tts",
@@ -67,7 +67,7 @@ object SpeechUtils {
                                 adapter = adapter,
                                 message = message,
                                 playIconResId = android.R.drawable.ic_media_play,
-                                stopIconResId = R.drawable.ic_media_stop // App-specific resource
+                                stopIconResId = R.drawable.ic_media_stop
                             )
                         }
                     } else {
@@ -99,7 +99,7 @@ object SpeechUtils {
 
         scope.launch {
             try {
-                val response = RetrofitClient.apiService.translate(
+                val response = RetrofitClient.apiService(context).translate(
                     TranslationRequest(sentences, srcLang, tgtLang),
                     "Bearer $token"
                 )

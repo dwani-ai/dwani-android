@@ -11,13 +11,9 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AnimationUtils
 import android.widget.*
-import android.text.Editable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -32,20 +28,20 @@ import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
+import android.text.Editable
 import android.util.Log
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
-import com.slabstech.dhwani.voiceai.Message
-import com.slabstech.dhwani.voiceai.MessageAdapter
 
 class TranslateActivity : AppCompatActivity() {
 
@@ -60,7 +56,7 @@ class TranslateActivity : AppCompatActivity() {
     private lateinit var sendButton: ImageButton
     private lateinit var targetLanguageSpinner: Spinner
     private lateinit var toolbar: Toolbar
-    private lateinit var ttsProgressBar: ProgressBar // Added for TTS
+    private lateinit var ttsProgressBar: ProgressBar
     private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -71,8 +67,8 @@ class TranslateActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
-    private var mediaPlayer: MediaPlayer? = null // Added for TTS playback
-    private val AUTO_PLAY_KEY = "auto_play_tts" // Added for auto-play setting
+    private var mediaPlayer: MediaPlayer? = null
+    private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,7 +79,7 @@ class TranslateActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translate)
 
-        fetchAccessToken()
+        checkAuthentication()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -93,12 +89,11 @@ class TranslateActivity : AppCompatActivity() {
             textQueryInput = findViewById(R.id.textQueryInput)
             sendButton = findViewById(R.id.sendButton)
             toolbar = findViewById(R.id.toolbar)
-            ttsProgressBar = findViewById(R.id.ttsProgressBar) // Initialize TTS ProgressBar
+            ttsProgressBar = findViewById(R.id.ttsProgressBar)
             val bottomNavigation = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
 
             setSupportActionBar(toolbar)
 
-            // Initialize TTS settings if not present
             if (!prefs.contains(AUTO_PLAY_KEY)) {
                 prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
             }
@@ -109,7 +104,7 @@ class TranslateActivity : AppCompatActivity() {
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
             }, { message, button ->
-                toggleAudioPlayback(message, button) // Enable audio control
+                toggleAudioPlayback(message, button)
             })
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@TranslateActivity)
@@ -206,16 +201,11 @@ class TranslateActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchAccessToken() {
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.apiService.login(LoginRequest("testuser", "password123"))
-                prefs.edit().putString("access_token", response.access_token).apply()
-                Log.d("TranslateActivity", "Token fetched: ${response.access_token}")
-            } catch (e: Exception) {
-                Log.e("TranslateActivity", "Token fetch failed: ${e.message}", e)
-                Toast.makeText(this@TranslateActivity, "Authentication failed", Toast.LENGTH_SHORT).show()
-            }
+    private fun checkAuthentication() {
+        val token = prefs.getString("access_token", null)
+        if (token == null) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
         }
     }
 
@@ -266,8 +256,18 @@ class TranslateActivity : AppCompatActivity() {
                 }
                 true
             }
+            R.id.action_logout -> {
+                logout()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun logout() {
+        prefs.edit().remove("access_token").apply()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 
     override fun onResume() {
@@ -447,6 +447,7 @@ class TranslateActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = prefs.getString("access_token", null) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
+        val languageRequestBody = language.toRequestBody("text/plain".toMediaType())
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -454,7 +455,7 @@ class TranslateActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.transcribeAudio(filePart, language, "Bearer $token")
+                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, languageRequestBody, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -523,7 +524,7 @@ class TranslateActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.translate(translationRequest, "Bearer $token")
+                val response = RetrofitClient.apiService(this@TranslateActivity).translate(translationRequest, "Bearer $token")
                 val translatedText = response.translations.joinToString("\n")
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Translation: $translatedText", timestamp, false)
@@ -562,7 +563,6 @@ class TranslateActivity : AppCompatActivity() {
         )
     }
 
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -581,5 +581,4 @@ class TranslateActivity : AppCompatActivity() {
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
     }
-
 }

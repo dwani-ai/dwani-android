@@ -2,10 +2,9 @@ package com.slabstech.dhwani.voiceai
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.preference.PreferenceManager
-import com.google.gson.GsonBuilder
 import kotlinx.coroutines.runBlocking
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
@@ -16,30 +15,25 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
-// Data Models
 data class LoginRequest(val username: String, val password: String)
 data class TokenResponse(val access_token: String, val token_type: String)
+data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
 data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
 data class ChatResponse(val response: String)
-data class TTSRequest(val input: String, val voice: String, val model: String, val response_format: String, val speed: Double)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
 data class VisualQueryResponse(val answer: String)
 
-// API Service Interface
 interface ApiService {
     @POST("v1/token")
     suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
 
-    @POST("v1/refresh")
-    suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
-
     @Multipart
-    @POST("v1/transcribe/")
+    @POST("v1/transcribe")
     suspend fun transcribeAudio(
-        @Part file: MultipartBody.Part,
-        @Query("language") language: String,
+        @Part audio: MultipartBody.Part,
+        @Part("language") language: RequestBody,
         @Header("Authorization") token: String
     ): TranscriptionResponse
 
@@ -61,7 +55,7 @@ interface ApiService {
 
     @POST("v1/translate")
     suspend fun translate(
-        @Body request: TranslationRequest,
+        @Body translationRequest: TranslationRequest,
         @Header("Authorization") token: String
     ): TranslationResponse
 
@@ -74,51 +68,59 @@ interface ApiService {
         @Query("tgt_lang") tgtLang: String,
         @Header("Authorization") token: String
     ): VisualQueryResponse
+
+    @POST("v1/refresh")
+    suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
 }
 
-// Retrofit Client
 object RetrofitClient {
-    private const val BASE_URL = "https://slabstech-dhwani-server.hf.space/"
-    private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(DhwaniApp.context) }
+    private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
 
-    private val authenticator = object : okhttp3.Authenticator {
-        override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-            val currentToken = prefs.getString("access_token", null) ?: return null
-            val refreshResponse = runBlocking {
-                apiService.refreshToken("Bearer $currentToken")
+    private fun getOkHttpClient(context: Context): OkHttpClient {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val authenticator = object : okhttp3.Authenticator {
+            override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
+                val currentToken = prefs.getString("access_token", null) ?: return null
+                try {
+                    val refreshResponse = runBlocking {
+                        apiService(context).refreshToken("Bearer $currentToken")
+                    }
+                    val newToken = refreshResponse.access_token
+                    prefs.edit().putString("access_token", newToken).apply()
+                    return response.request.newBuilder()
+                        .header("Authorization", "Bearer $newToken")
+                        .build()
+                } catch (e: Exception) {
+                    Log.e("RetrofitClient", "Token refresh failed: ${e.message}", e)
+                    return null
+                }
             }
-            val newToken = refreshResponse.access_token
-            prefs.edit().putString("access_token", newToken).apply()
-            return response.request.newBuilder()
-                .header("Authorization", "Bearer $newToken")
-                .build()
         }
+
+        return OkHttpClient.Builder()
+            .authenticator(authenticator)
+            .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .authenticator(authenticator)
-        .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
-
-    val apiService: ApiService = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create(GsonBuilder().setLenient().create()))
-        .build()
-        .create(ApiService::class.java)
+    fun apiService(context: Context): ApiService {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val baseUrl = prefs.getString("base_url", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(getOkHttpClient(context))
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
 }
 
-// Application Class
 class DhwaniApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        context = this
-    }
-
-    companion object {
-        lateinit var context: Context
+        // No static context initialization needed
     }
 }

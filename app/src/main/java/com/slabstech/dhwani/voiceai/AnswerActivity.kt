@@ -11,15 +11,9 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AnimationUtils
-import android.widget.EditText
-import android.widget.ImageButton
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -41,14 +35,13 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
-import com.slabstech.dhwani.voiceai.Message
-import com.slabstech.dhwani.voiceai.MessageAdapter
 
 class AnswerActivity : AppCompatActivity() {
 
@@ -56,12 +49,13 @@ class AnswerActivity : AppCompatActivity() {
     private var audioRecord: AudioRecord? = null
     private var audioFile: File? = null
     private lateinit var historyRecyclerView: RecyclerView
-    private lateinit var audioLevelBar: android.widget.ProgressBar
-    private lateinit var progressBar: android.widget.ProgressBar
+    private lateinit var audioLevelBar: ProgressBar
+    private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
+    private lateinit var ttsProgressBar: ProgressBar
     private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -72,7 +66,7 @@ class AnswerActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
-    private lateinit var ttsProgressBar: android.widget.ProgressBar
+    private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
@@ -84,7 +78,7 @@ class AnswerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_answer)
 
-        fetchAccessToken()
+        checkAuthentication()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -206,16 +200,11 @@ class AnswerActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchAccessToken() {
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.apiService.login(LoginRequest("testuser", "password123"))
-                prefs.edit().putString("access_token", response.access_token).apply()
-                Log.d("AnswerActivity", "Token fetched: ${response.access_token}")
-            } catch (e: Exception) {
-                Log.e("AnswerActivity", "Token fetch failed: ${e.message}", e)
-                Toast.makeText(this@AnswerActivity, "Authentication failed", Toast.LENGTH_SHORT).show()
-            }
+    private fun checkAuthentication() {
+        val token = prefs.getString("access_token", null)
+        if (token == null) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
         }
     }
 
@@ -254,8 +243,18 @@ class AnswerActivity : AppCompatActivity() {
                 }
                 true
             }
+            R.id.action_logout -> {
+                logout()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun logout() {
+        prefs.edit().remove("access_token").apply()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 
     override fun onResume() {
@@ -436,6 +435,7 @@ class AnswerActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = prefs.getString("access_token", null) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
+        val languageRequestBody = language.toRequestBody("text/plain".toMediaType())
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -443,7 +443,7 @@ class AnswerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.transcribeAudio(filePart, language, "Bearer $token")
+                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, languageRequestBody, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -486,7 +486,7 @@ class AnswerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService.chat(chatRequest, "Bearer $token")
+                val response = RetrofitClient.apiService(this@AnswerActivity).chat(chatRequest, "Bearer $token")
                 val answerText = response.response
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Answer: $answerText", timestamp, false)
@@ -494,11 +494,9 @@ class AnswerActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                //textToSpeech(answerText, message)
-
                 SpeechUtils.textToSpeech(
-                    context = this@AnswerActivity, // First parameter: Context
-                    scope = lifecycleScope,        // Second parameter: LifecycleCoroutineScope
+                    context = this@AnswerActivity,
+                    scope = lifecycleScope,
                     text = answerText,
                     message = message,
                     recyclerView = historyRecyclerView,
@@ -515,9 +513,6 @@ class AnswerActivity : AppCompatActivity() {
             }
         }
     }
-
-
-    private var mediaPlayer: MediaPlayer? = null
 
     private fun scrollToLatestMessage() {
         val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
@@ -544,7 +539,6 @@ class AnswerActivity : AppCompatActivity() {
         )
     }
 
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -563,5 +557,4 @@ class AnswerActivity : AppCompatActivity() {
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
     }
-
 }

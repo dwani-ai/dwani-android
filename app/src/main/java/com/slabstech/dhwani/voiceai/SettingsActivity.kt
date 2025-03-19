@@ -133,8 +133,8 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun testEndpoints() {
             val prefs = preferenceManager.sharedPreferences
-            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://gaganyatri-asr-indic-server-cpu.hf.space/transcribe/") ?: ""
-            val chatUrl = prefs?.getString("chat_api_endpoint", "https://gaganyatri-llm-indic-server-cpu.hf.space/chat") ?: ""
+            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://slabstech-dhwani-server.hf.space/transcribe/") ?: ""
+            val chatUrl = prefs?.getString("chat_api_endpoint", "https://slabstech-dhwani-server.hf.space/chat") ?: ""
             val language = prefs?.getString("language", "kannada") ?: "kannada"
 
             CoroutineScope(Dispatchers.Main).launch {

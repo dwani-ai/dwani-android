@@ -10,16 +10,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,18 +25,19 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
+import android.media.MediaPlayer
+import android.util.Log
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import org.json.JSONObject
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.TimeUnit
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class DocsActivity : AppCompatActivity() {
 
@@ -51,12 +50,10 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private val VLM_API_ENDPOINT = "https://gaganyatri-llm-indic-server-vlm.hf.space/v1/visual_query/"
-
-    //private val VLM_API_ENDPOINT = "http://:7860/v1/visual_query/"
-
-    private val RETRY_DELAY_MS = 2000L
     private var lastImageUri: Uri? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private val AUTO_PLAY_KEY = "auto_play_tts"
+    private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
@@ -69,18 +66,19 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                processImage(it, "describe image") // Process immediately
+                processImage(it, "describe image")
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
+
+        checkAuthentication()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -93,11 +91,20 @@ class DocsActivity : AppCompatActivity() {
 
             setSupportActionBar(toolbar)
 
+            if (!prefs.contains(AUTO_PLAY_KEY)) {
+                prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
+            }
+            if (!prefs.contains("tts_enabled")) {
+                prefs.edit().putBoolean("tts_enabled", false).apply()
+            }
+
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
-            }, { message, _ ->
+            }, { message, button ->
                 if (message.isQuery && message.imageUri != null) {
                     showCustomQueryDialog(message.imageUri!!)
+                } else if (!message.isQuery && message.audioFile != null) {
+                    toggleAudioPlayback(message, button)
                 }
             })
             historyRecyclerView.apply {
@@ -139,8 +146,16 @@ class DocsActivity : AppCompatActivity() {
             }
             bottomNavigation.selectedItemId = R.id.nav_docs
         } catch (e: Exception) {
-            android.util.Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
+            Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    private fun checkAuthentication() {
+        val token = prefs.getString("access_token", null)
+        if (token == null) {
+            startActivity(Intent(this, LoginActivity::class.java))
             finish()
         }
     }
@@ -186,13 +201,10 @@ class DocsActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        android.util.Log.d("DocsActivity", "Permission result: requestCode=$requestCode, permissions=${permissions.joinToString()}, grantResults=${grantResults.joinToString()}")
         if (requestCode == STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            android.util.Log.d("DocsActivity", "Storage permission granted")
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
             pickImageLauncher.launch(intent)
         } else {
-            android.util.Log.w("DocsActivity", "Storage permission denied")
             val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
@@ -216,28 +228,24 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun processImage(uri: Uri, query: String) {
-        runOnUiThread { progressBar.visibility = View.VISIBLE }
+        progressBar.visibility = View.VISIBLE
 
-        Thread {
+        lifecycleScope.launch {
             try {
                 val imageFile = uriToFile(uri)
                 if (imageFile == null || !imageFile.exists()) {
-                    runOnUiThread {
-                        Toast.makeText(this, "Failed to process image file", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
-                    return@Thread
+                    Toast.makeText(this@DocsActivity, "Failed to process image file", Toast.LENGTH_SHORT).show()
+                    progressBar.visibility = View.GONE
+                    return@launch
                 }
 
-                getImageDescription(imageFile, query)
+                getImageDescriptionAndTranslation(imageFile, query)
             } catch (e: Exception) {
-                android.util.Log.e("DocsActivity", "Image processing error: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("DocsActivity", "Image processing error: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
+                progressBar.visibility = View.GONE
             }
-        }.start()
+        }
     }
 
     private fun uriToFile(uri: Uri): File? {
@@ -249,95 +257,79 @@ class DocsActivity : AppCompatActivity() {
             }
             tempFile
         } catch (e: Exception) {
-            android.util.Log.e("DocsActivity", "Failed to convert Uri to File: ${e.message}", e)
+            Log.e("DocsActivity", "Failed to convert Uri to File: ${e.message}", e)
             null
         }
     }
 
-    private fun getImageDescription(imageFile: File, query: String) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+    private fun getImageDescriptionAndTranslation(imageFile: File, query: String) {
+        val token = prefs.getString("access_token", null) ?: return
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu"
+        )
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val tgtLang = languageMap[selectedLanguage] ?: "kan_Knda"
 
-        val dhwaniApiKey = prefs.getString("chat_api_key", "your-new-secret-api-key") ?: "your-new-secret-api-key"
+        val requestFile = imageFile.asRequestBody("image/jpeg".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", imageFile.name, requestFile)
+        val queryPart = query.toRequestBody("text/plain".toMediaType())
 
-        val maxRetries = prefs.getString("max_retries", "3")?.toIntOrNull() ?: 3
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
-        val requestBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "file", imageFile.name,
-                imageFile.asRequestBody("image/jpeg".toMediaType())
-            )
-            .addFormDataPart("query", query)
-            .build()
-
-        val request = Request.Builder()
-            .url(VLM_API_ENDPOINT)
-            .header("accept", "application/json")
-            .header("X-API-Key", dhwaniApiKey)
-            .post(requestBody)
-            .build()
-
-        Thread {
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
             try {
-                var attempts = 0
-                var success = false
-                var responseBody: String? = null
+                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
+                    file = filePart,
+                    query = queryPart,
+                    srcLang = "eng_Latn",
+                    tgtLang = tgtLang,
+                    token = "Bearer $token"
+                )
+                val description = response.answer
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Response ($selectedLanguage): $description", timestamp, false)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+                SpeechUtils.textToSpeech(
+                    context = this@DocsActivity,
+                    scope = lifecycleScope,
+                    text = description,
+                    message = message,
+                    recyclerView = historyRecyclerView,
+                    adapter = messageAdapter,
+                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE }
+                )
 
-                while (attempts < maxRetries && !success) {
-                    try {
-                        val response = client.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            responseBody = response.body?.string()
-                            android.util.Log.d("DocsActivity", "VLM Response: $responseBody")
-                            success = true
-                        } else {
-                            attempts++
-                            android.util.Log.w("DocsActivity", "API failed with code: ${response.code}")
-                            if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                        }
-                    } catch (e: Exception) {
-                        attempts++
-                        android.util.Log.e("DocsActivity", "Network error: ${e.message}")
-                        if (attempts < maxRetries) Thread.sleep(RETRY_DELAY_MS)
-                    }
-                }
-
-                if (success && responseBody != null) {
-                    val json = JSONObject(responseBody)
-                    val description = json.optString("answer", "No description available")
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Response: $description", timestamp, false)
-                    runOnUiThread {
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        historyRecyclerView.requestLayout()
-                        scrollToLatestMessage()
-                        progressBar.visibility = View.GONE
-                        if (messageList.size == 2) { // First upload
-                            Toast.makeText(this, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this, "Image query failed after $maxRetries retries", Toast.LENGTH_SHORT).show()
-                        progressBar.visibility = View.GONE
-                    }
+                if (messageList.size == 1) {
+                    Toast.makeText(this@DocsActivity, "Tap the thumbnail to ask more!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("DocsActivity", "VLM parsing error: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
-                    progressBar.visibility = View.GONE
-                }
+                Log.e("DocsActivity", "Processing failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "Image query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
+                progressBar.visibility = View.GONE
                 imageFile.delete()
             }
-        }.start()
+        }
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        mediaPlayer = SpeechUtils.toggleAudioPlayback(
+            context = this,
+            message = message,
+            button = button,
+            recyclerView = historyRecyclerView,
+            adapter = messageAdapter,
+            mediaPlayer = mediaPlayer,
+            playIconResId = android.R.drawable.ic_media_play,
+            stopIconResId = R.drawable.ic_media_stop
+        )
     }
 
     private fun showCustomQueryDialog(imageUri: Uri) {
@@ -394,8 +386,18 @@ class DocsActivity : AppCompatActivity() {
                 }
                 true
             }
+            R.id.action_logout -> {
+                logout()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun logout() {
+        prefs.edit().remove("access_token").apply()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 
     private fun showHistoryDialog() {
@@ -454,79 +456,10 @@ class DocsActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
-    data class Message(
-        val text: String,
-        val timestamp: String,
-        val isQuery: Boolean,
-        val imageUri: Uri? = null
-    )
-
-    class MessageAdapter(
-        private val messages: MutableList<Message>,
-        private val onLongClick: (Int) -> Unit,
-        private val onThumbnailClick: (Message, ImageButton) -> Unit // Changed to onThumbnailClick
-    ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
-
-        class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val messageText: TextView = itemView.findViewById(R.id.messageText)
-            val timestampText: TextView = itemView.findViewById(R.id.timestampText)
-            val messageContainer: LinearLayout = itemView.findViewById(R.id.messageContainer)
-            val audioControlButton: ImageButton = itemView.findViewById(R.id.audioControlButton)
-            val thumbnailImage: ImageView = itemView.findViewById(R.id.thumbnailImage)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message, parent, false)
-            return MessageViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-            val message = messages[position]
-            holder.messageText.text = message.text
-            holder.timestampText.text = message.timestamp
-
-            val layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
-            holder.messageContainer.layoutParams = layoutParams
-
-            val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)?.mutate()
-            backgroundDrawable?.let {
-                it.setTint(ContextCompat.getColor(
-                    holder.itemView.context,
-                    if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
-                ))
-                holder.messageText.background = it
-                holder.messageText.elevation = 2f
-                holder.messageText.setPadding(16, 16, 16, 16)
-            }
-
-            holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
-            holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
-
-            if (message.isQuery && message.imageUri != null) {
-                holder.thumbnailImage.visibility = View.VISIBLE
-                holder.thumbnailImage.setImageURI(message.imageUri)
-                holder.thumbnailImage.setOnClickListener {
-                    onThumbnailClick(message, holder.audioControlButton) // Trigger custom query
-                }
-            } else {
-                holder.thumbnailImage.visibility = View.GONE
-            }
-
-            holder.audioControlButton.visibility = View.GONE
-
-            val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
-            holder.itemView.startAnimation(animation)
-
-            holder.itemView.setOnLongClickListener {
-                onLongClick(position)
-                true
-            }
-        }
-
-        override fun getItemCount(): Int = messages.size
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        messageList.forEach { it.audioFile?.delete() }
     }
 }

@@ -12,6 +12,7 @@ import com.slabstech.dhwani.voiceai.Message
 import com.slabstech.dhwani.voiceai.MessageAdapter
 import com.slabstech.dhwani.voiceai.R
 import com.slabstech.dhwani.voiceai.RetrofitClient
+import com.slabstech.dhwani.voiceai.TTSRequest
 import com.slabstech.dhwani.voiceai.TranslationRequest
 import kotlinx.coroutines.launch
 import java.io.File
@@ -40,14 +41,17 @@ object SpeechUtils {
         scope.launch {
             ttsProgressBarVisibility(true)
             try {
-                val response = RetrofitClient.apiService(context).textToSpeech(
+                val ttsRequest = TTSRequest(
                     input = text,
                     voice = voice,
                     model = "ai4bharat/indic-parler-tts",
-                    responseFormat = "mp3",
+                    response_format = "mp3",
                     speed = 1.0
                 )
+                Log.d("SpeechUtils", "TTS Request: $ttsRequest")
+                val response = RetrofitClient.apiService(context).textToSpeech(ttsRequest)
                 val audioBytes = response.byteStream().readBytes()
+                Log.d("SpeechUtils", "TTS Response: byte size=${audioBytes.size}")
                 if (audioBytes.isNotEmpty()) {
                     val audioFile = File(context.cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
                     FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }

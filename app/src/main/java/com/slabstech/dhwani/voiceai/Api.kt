@@ -20,11 +20,7 @@ interface ApiService {
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
-        @Query("input") input: String,
-        @Query("voice") voice: String,
-        @Query("model") model: String,
-        @Query("response_format") responseFormat: String,
-        @Query("speed") speed: Double
+        @Body ttsRequest: TTSRequest
     ): ResponseBody
 
     @POST("v1/translate")
@@ -49,3 +45,10 @@ data class ChatResponse(val response: String)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
 data class VisualQueryResponse(val answer: String)
+data class TTSRequest(
+    val input: String,
+    val voice: String,
+    val model: String,
+    val response_format: String,
+    val speed: Double
+)

@@ -19,7 +19,13 @@ object RetrofitClient {
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", "DhwaniVoiceAI/1.0.3")
-                    .header("accept", "application/json") // Added for visual query
+                    .header("accept", "application/json")
+                    .apply {
+                        // Only add Content-Type for JSON requests
+                        if (chain.request().url.encodedPath.endsWith("/v1/audio/speech")) {
+                            header("Content-Type", "application/json")
+                        }
+                    }
                     .build()
                 chain.proceed(request)
             }

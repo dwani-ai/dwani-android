@@ -2,6 +2,7 @@ package com.slabstech.dhwani.voiceai
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
@@ -9,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
+import retrofit2.Response
 
 class LoginActivity : AppCompatActivity() {
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
@@ -45,14 +47,26 @@ class LoginActivity : AppCompatActivity() {
     private fun fetchAccessToken(email: String) {
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.loginApiService(this@LoginActivity).login(LoginRequest(email, email))
-                prefs.edit().putString("access_token", response.access_token).apply()
-                Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
-                finish()
+                val response: Response<TokenResponse> = RetrofitClient.loginApiService(this@LoginActivity).login(LoginRequest(email, email))
+                if (response.isSuccessful) {
+                    val tokenResponse = response.body()
+                    if (tokenResponse != null) {
+                        prefs.edit().putString("access_token", tokenResponse.access_token).apply()
+                        Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
+                        startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
+                        finish()
+                    } else {
+                        Log.e("LoginActivity", "Response body is null")
+                        Toast.makeText(this@LoginActivity, "Login failed: Empty response", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    Log.e("LoginActivity", "Error response: $errorBody, Code: ${response.code()}")
+                    Toast.makeText(this@LoginActivity, "Login failed: ${response.message()}", Toast.LENGTH_LONG).show()
+                }
             } catch (e: Exception) {
+                Log.e("LoginActivity", "Login failed", e)
                 Toast.makeText(this@LoginActivity, "Login failed: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
             }
         }
     }

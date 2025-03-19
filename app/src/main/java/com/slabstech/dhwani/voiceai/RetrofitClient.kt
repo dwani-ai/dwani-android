@@ -18,6 +18,12 @@ object RetrofitClient {
     private fun getBasicOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "DhwaniVoiceAI/1.0.3") // Consistent User-Agent
+                    .build()
+                chain.proceed(request)
+            }
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -49,6 +55,12 @@ object RetrofitClient {
         return OkHttpClient.Builder()
             .authenticator(authenticator)
             .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "DhwaniVoiceAI/1.0.3") // Consistent User-Agent
+                    .build()
+                chain.proceed(request)
+            }
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

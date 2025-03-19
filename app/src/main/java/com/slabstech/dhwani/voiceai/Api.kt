@@ -3,6 +3,7 @@ package com.slabstech.dhwani.voiceai
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.*
 
 // Data classes
@@ -19,7 +20,7 @@ data class VisualQueryResponse(val answer: String)
 // API Service Interface
 interface ApiService {
     @POST("v1/token")
-    suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
+    suspend fun login(@Body loginRequest: LoginRequest): Response<TokenResponse>
 
     @Multipart
     @POST("v1/transcribe/")

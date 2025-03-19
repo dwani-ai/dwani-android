@@ -447,7 +447,6 @@ class TranslateActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = prefs.getString("access_token", null) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
-        val languageRequestBody = language.toRequestBody("text/plain".toMediaType())
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -455,7 +454,7 @@ class TranslateActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, languageRequestBody, "Bearer $token")
+                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, language, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -478,7 +477,6 @@ class TranslateActivity : AppCompatActivity() {
             }
         }
     }
-
     private fun scrollToLatestMessage() {
         val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
         if (autoScrollEnabled && messageList.isNotEmpty()) {

@@ -435,7 +435,6 @@ class AnswerActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = prefs.getString("access_token", null) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
-        val languageRequestBody = language.toRequestBody("text/plain".toMediaType())
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -443,7 +442,7 @@ class AnswerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, languageRequestBody, "Bearer $token")
+                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, language, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {

@@ -30,10 +30,10 @@ interface ApiService {
     suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
 
     @Multipart
-    @POST("v1/transcribe")
+    @POST("v1/transcribe/")
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
-        @Part("language") language: RequestBody,
+        @Query("language") language: String,
         @Header("Authorization") token: String
     ): TranscriptionResponse
 
@@ -121,6 +121,5 @@ object RetrofitClient {
 class DhwaniApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // No static context initialization needed
     }
 }

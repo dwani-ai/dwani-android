@@ -2,6 +2,7 @@ package com.slabstech.dhwani.voiceai
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
@@ -45,14 +46,18 @@ class LoginActivity : AppCompatActivity() {
     private fun fetchAccessToken(email: String) {
         lifecycleScope.launch {
             try {
+                Log.d("LoginActivity", "Attempting to login with email: $email")
                 val response = RetrofitClient.apiService(this@LoginActivity).login(LoginRequest(email, email))
+                Log.d("LoginActivity", "Login response received: $response")
                 prefs.edit().putString("access_token", response.access_token).apply()
                 Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
                 startActivity(Intent(this@LoginActivity, DocsActivity::class.java))
                 finish()
             } catch (e: Exception) {
+                Log.e("LoginActivity", "Login failed", e)
                 Toast.makeText(this@LoginActivity, "Login failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
+
 }

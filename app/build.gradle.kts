@@ -60,7 +60,6 @@ dependencies {
     implementation(libs.okhttp.v490)
     implementation(libs.logging.interceptor)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    // Added dependencies
-    implementation("androidx.work:work-runtime-ktx:2.9.0") // For WorkManager
-    implementation("org.json:json:20230227") // For JWT decoding
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("org.json:json:20230227")
 }

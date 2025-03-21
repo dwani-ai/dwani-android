@@ -12,7 +12,7 @@ class DhwaniApp : Application() {
     }
 
     private fun scheduleTokenRefresh() {
-        val workRequest = PeriodicWorkRequestBuilder<TokenRefreshWorker>(15, TimeUnit.MINUTES)
+        val workRequest = PeriodicWorkRequestBuilder<TokenRefreshWorker>(12, TimeUnit.HOURS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(

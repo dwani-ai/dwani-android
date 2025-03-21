@@ -15,7 +15,7 @@ import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
 data class LoginRequest(val username: String, val password: String)
-data class TokenResponse(val access_token: String, val token_type: String)
+data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
 data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
 data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
@@ -78,14 +78,14 @@ object RetrofitClient {
     private fun getOkHttpClient(context: Context): OkHttpClient {
         val authenticator = object : okhttp3.Authenticator {
             override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-                val currentToken = AuthManager.getToken(context) ?: return null
+                val refreshToken = AuthManager.getRefreshToken(context) ?: return null
                 try {
                     val refreshResponse = runBlocking {
-                        apiService(context).refreshToken("Bearer $currentToken")
+                        apiService(context).refreshToken("Bearer $refreshToken")
                     }
                     val newToken = refreshResponse.access_token
-                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
-                    AuthManager.saveToken(context, newToken, newExpiryTime)
+                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    AuthManager.saveTokens(context, newToken, refreshResponse.refresh_token, newExpiryTime)
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()

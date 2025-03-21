@@ -15,8 +15,9 @@ import java.nio.charset.StandardCharsets
 
 object AuthManager {
     private const val TOKEN_KEY = "access_token"
+    private const val REFRESH_TOKEN_KEY = "refresh_token"
     private const val EXPIRY_KEY = "token_expiry_time"
-    private const val EXPIRY_BUFFER_MS = 5 * 60 * 1000 // 5 minutes
+    private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer
     private const val MAX_RETRIES = 3
 
     private fun getSecurePrefs(context: Context): SharedPreferences {
@@ -34,8 +35,9 @@ object AuthManager {
         try {
             val response = RetrofitClient.apiService(context).login(LoginRequest(email, email))
             val token = response.access_token
-            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 30 * 1000)
-            saveToken(context, token, expiryTime)
+            val refreshToken = response.refresh_token
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
+            saveTokens(context, token, refreshToken, expiryTime)
             Log.d("AuthManager", "Login successful, expiry: $expiryTime")
             true
         } catch (e: Exception) {
@@ -47,15 +49,17 @@ object AuthManager {
     suspend fun refreshTokenIfNeeded(context: Context): Boolean = withContext(Dispatchers.IO) {
         val prefs = getSecurePrefs(context)
         val currentToken = prefs.getString(TOKEN_KEY, null) ?: return@withContext false
+        val refreshToken = prefs.getString(REFRESH_TOKEN_KEY, null) ?: return@withContext false
 
         if (isTokenExpired(context)) {
             var attempts = 0
             while (attempts < MAX_RETRIES) {
                 try {
-                    val response = RetrofitClient.apiService(context).refreshToken("Bearer $currentToken")
+                    val response = RetrofitClient.apiService(context).refreshToken("Bearer $refreshToken")
                     val newToken = response.access_token
-                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
-                    saveToken(context, newToken, newExpiryTime)
+                    val newRefreshToken = response.refresh_token
+                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    saveTokens(context, newToken, newRefreshToken, newExpiryTime)
                     Log.d("AuthManager", "Token refreshed successfully")
                     return@withContext true
                 } catch (e: Exception) {
@@ -72,16 +76,21 @@ object AuthManager {
     }
 
     fun isAuthenticated(context: Context): Boolean {
-        return getSecurePrefs(context).contains(TOKEN_KEY)
+        return getSecurePrefs(context).contains(TOKEN_KEY) && getSecurePrefs(context).contains(REFRESH_TOKEN_KEY)
     }
 
     fun getToken(context: Context): String? {
         return getSecurePrefs(context).getString(TOKEN_KEY, null)
     }
 
+    fun getRefreshToken(context: Context): String? {
+        return getSecurePrefs(context).getString(REFRESH_TOKEN_KEY, null)
+    }
+
     fun logout(context: Context) {
         getSecurePrefs(context).edit()
             .remove(TOKEN_KEY)
+            .remove(REFRESH_TOKEN_KEY)
             .remove(EXPIRY_KEY)
             .apply()
         context.startActivity(Intent(context, LoginActivity::class.java).apply {
@@ -95,9 +104,10 @@ object AuthManager {
         return (expiryTime - EXPIRY_BUFFER_MS) < System.currentTimeMillis() || expiryTime == 0L
     }
 
-    internal fun saveToken(context: Context, token: String, expiryTime: Long) {
+    internal fun saveTokens(context: Context, token: String, refreshToken: String, expiryTime: Long) {
         getSecurePrefs(context).edit()
             .putString(TOKEN_KEY, token)
+            .putString(REFRESH_TOKEN_KEY, refreshToken)
             .putLong(EXPIRY_KEY, expiryTime)
             .apply()
     }

@@ -42,7 +42,6 @@
         <activity android:name=".TranslateActivity" />
         <activity android:name=".DocsActivity" />
 
-        <!-- WorkManager Services -->
         <service
             android:name="androidx.work.impl.background.systemalarm.SystemAlarmService"
             android:exported="false"/>

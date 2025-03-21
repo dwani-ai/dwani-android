@@ -1,14 +1,10 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
 import android.view.MotionEvent
@@ -28,9 +24,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
-import android.text.Editable
+import android.content.ClipData
+import android.content.Context
 import android.util.Log
-import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -51,10 +47,7 @@ class AnswerActivity : AppCompatActivity() {
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
-    private lateinit var textQueryInput: EditText
-    private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
-    private lateinit var ttsProgressBar: ProgressBar
     private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -63,10 +56,7 @@ class AnswerActivity : AppCompatActivity() {
     private var recordingStartTime: Long = 0L
     private val messageList = mutableListOf<Message>()
     private lateinit var messageAdapter: MessageAdapter
-    private var lastQuery: String? = null
     private var currentTheme: Boolean? = null
-    private var mediaPlayer: MediaPlayer? = null
-    private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,26 +74,14 @@ class AnswerActivity : AppCompatActivity() {
             audioLevelBar = findViewById(R.id.audioLevelBar)
             progressBar = findViewById(R.id.progressBar)
             pushToTalkFab = findViewById(R.id.pushToTalkFab)
-            textQueryInput = findViewById(R.id.textQueryInput)
-            sendButton = findViewById(R.id.sendButton)
             toolbar = findViewById(R.id.toolbar)
-            ttsProgressBar = findViewById(R.id.ttsProgressBar)
             val bottomNavigation = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
 
             setSupportActionBar(toolbar)
 
-            if (!prefs.contains(AUTO_PLAY_KEY)) {
-                prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
-            }
-            if (!prefs.contains("tts_enabled")) {
-                prefs.edit().putBoolean("tts_enabled", false).apply()
-            }
-
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
-            }, { message, button ->
-                toggleAudioPlayback(message, button)
-            })
+            }, { _, _ -> }) // No audio playback in AnswerActivity
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@AnswerActivity)
                 adapter = messageAdapter
@@ -134,36 +112,6 @@ class AnswerActivity : AppCompatActivity() {
                     else -> false
                 }
             }
-
-            sendButton.setOnClickListener {
-                val query = textQueryInput.text.toString().trim()
-                if (query.isNotEmpty()) {
-                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val message = Message("Query: $query", timestamp, true)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-                    getChatResponse(query)
-                    textQueryInput.text.clear()
-                } else {
-                    Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    if (s.isNullOrEmpty()) {
-                        sendButton.visibility = View.GONE
-                        pushToTalkFab.visibility = View.VISIBLE
-                    } else {
-                        sendButton.visibility = View.VISIBLE
-                        pushToTalkFab.visibility = View.GONE
-                    }
-                }
-            })
 
             bottomNavigation.setOnItemSelectedListener { item ->
                 when (item.itemId) {
@@ -239,6 +187,7 @@ class AnswerActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         menu.findItem(R.id.action_auto_scroll)?.isChecked = true
+        menu.findItem(R.id.action_target_language)?.isVisible = false // Hide language spinner
         return true
     }
 
@@ -254,21 +203,7 @@ class AnswerActivity : AppCompatActivity() {
             }
             R.id.action_clear -> {
                 messageList.clear()
-                lastQuery = null
                 messageAdapter.notifyDataSetChanged()
-                true
-            }
-            R.id.action_repeat -> {
-                lastQuery?.let { getChatResponse(it) }
-                    ?: Toast.makeText(this, "No previous query to repeat", Toast.LENGTH_SHORT).show()
-                true
-            }
-            R.id.action_share -> {
-                if (messageList.isNotEmpty()) {
-                    shareMessage(messageList.last())
-                } else {
-                    Toast.makeText(this, "No messages to share", Toast.LENGTH_SHORT).show()
-                }
                 true
             }
             R.id.action_logout -> {
@@ -305,7 +240,6 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun showMessageOptionsDialog(position: Int) {
         if (position < 0 || position >= messageList.size) return
-
         val message = messageList[position]
         val options = arrayOf("Delete", "Share", "Copy")
         AlertDialog.Builder(this)
@@ -336,7 +270,7 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun copyMessage(message: Message) {
         val copyText = "${message.text}\n[${message.timestamp}]"
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val clip = ClipData.newPlainText("Message", copyText)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
@@ -459,9 +393,8 @@ class AnswerActivity : AppCompatActivity() {
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
-                    lastQuery = voiceQueryText
-                    val message = Message("Voice Query: $voiceQueryText", timestamp, true)
-                    messageList.add(message)
+                    val queryMessage = Message("Query: $voiceQueryText", timestamp, true)
+                    messageList.add(queryMessage)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     historyRecyclerView.requestLayout()
                     scrollToLatestMessage()
@@ -479,53 +412,6 @@ class AnswerActivity : AppCompatActivity() {
         }
     }
 
-    private fun getChatResponse(prompt: String) {
-        val token = AuthManager.getToken(this) ?: return
-        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu"
-        )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
-        val tgtLang = srcLang
-
-        val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
-
-        lifecycleScope.launch {
-            progressBar.visibility = View.VISIBLE
-            try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).chat(chatRequest, "Bearer $token")
-                val answerText = response.response
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Answer: $answerText", timestamp, false)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                historyRecyclerView.requestLayout()
-                scrollToLatestMessage()
-                SpeechUtils.textToSpeech(
-                    context = this@AnswerActivity,
-                    scope = lifecycleScope,
-                    text = answerText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible ->
-                        ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                    }
-                )
-            } catch (e: Exception) {
-                Log.e("AnswerActivity", "Chat failed: ${e.message}", e)
-                Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
-            } finally {
-                progressBar.visibility = View.GONE
-            }
-        }
-    }
-
     private fun scrollToLatestMessage() {
         val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
         if (autoScrollEnabled && messageList.isNotEmpty()) {
@@ -538,17 +424,30 @@ class AnswerActivity : AppCompatActivity() {
         }
     }
 
-    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        mediaPlayer = SpeechUtils.toggleAudioPlayback(
-            context = this,
-            message = message,
-            button = button,
-            recyclerView = historyRecyclerView,
-            adapter = messageAdapter,
-            mediaPlayer = mediaPlayer,
-            playIconResId = android.R.drawable.ic_media_play,
-            stopIconResId = R.drawable.ic_media_stop
-        )
+    private fun getChatResponse(query: String) {
+        val token = AuthManager.getToken(this) ?: return
+        val srcLang = prefs.getString("language", "kan_Knda") ?: "kan_Knda"
+
+        val chatRequest = ChatRequest(query, srcLang, srcLang)
+
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
+            try {
+                val response = RetrofitClient.apiService(this@AnswerActivity).chat(chatRequest, "Bearer $token")
+                val responseText = response.response
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Answer: $responseText", timestamp, false)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+            } catch (e: Exception) {
+                Log.e("AnswerActivity", "Chat failed: ${e.message}", e)
+                Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                progressBar.visibility = View.GONE
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -561,12 +460,5 @@ class AnswerActivity : AppCompatActivity() {
             grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             // Permission granted
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        messageList.forEach { it.audioFile?.delete() }
     }
 }

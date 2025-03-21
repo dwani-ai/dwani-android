@@ -2,7 +2,6 @@ package com.slabstech.dhwani.voiceai
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
@@ -24,9 +23,8 @@ class LoginActivity : AppCompatActivity() {
         val emailEditText = findViewById<EditText>(R.id.emailEditText)
         val loginButton = findViewById<Button>(R.id.loginButton)
 
-        // Check if token already exists and is valid
         lifecycleScope.launch {
-            if (prefs.contains("access_token") && TokenUtils.refreshTokenIfNeeded(this@LoginActivity)) {
+            if (AuthManager.isAuthenticated(this@LoginActivity) && AuthManager.refreshTokenIfNeeded(this@LoginActivity)) {
                 startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
                 finish()
                 return@launch
@@ -47,22 +45,12 @@ class LoginActivity : AppCompatActivity() {
 
     private fun fetchAccessToken(email: String) {
         lifecycleScope.launch {
-            try {
-                Log.d("LoginActivity", "Attempting to login with email: $email")
-                val response = RetrofitClient.apiService(this@LoginActivity).login(LoginRequest(email, email))
-                val token = response.access_token
-                val expiryTime = TokenUtils.getTokenExpiration(token) ?: (System.currentTimeMillis() + 30 * 1000) // Fallback: 30 seconds
-                prefs.edit()
-                    .putString("access_token", token)
-                    .putLong("token_expiry_time", expiryTime)
-                    .apply()
-                Log.d("LoginActivity", "Login response received: $response, expiry: $expiryTime")
+            if (AuthManager.login(this@LoginActivity, email)) {
                 Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
                 startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
                 finish()
-            } catch (e: Exception) {
-                Log.e("LoginActivity", "Login failed", e)
-                Toast.makeText(this@LoginActivity, "Login failed: ${e.message}", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this@LoginActivity, "Login failed", Toast.LENGTH_LONG).show()
             }
         }
     }

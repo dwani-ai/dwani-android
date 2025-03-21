@@ -35,7 +35,6 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -202,10 +201,39 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun checkAuthentication() {
-        val token = prefs.getString("access_token", null)
-        if (token == null) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+        lifecycleScope.launch {
+            if (!AuthManager.isAuthenticated(this@TranslateActivity) || !AuthManager.refreshTokenIfNeeded(this@TranslateActivity)) {
+                AuthManager.logout(this@TranslateActivity)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setMessage("Checking session...")
+            .setCancelable(false)
+            .create()
+        dialog.show()
+
+        lifecycleScope.launch {
+            if (AuthManager.refreshTokenIfNeeded(this@TranslateActivity)) {
+                dialog.dismiss()
+            } else {
+                dialog.dismiss()
+                AlertDialog.Builder(this@TranslateActivity)
+                    .setTitle("Session Expired")
+                    .setMessage("Your session could not be refreshed. Please log in again.")
+                    .setPositiveButton("OK") { _, _ -> AuthManager.logout(this@TranslateActivity) }
+                    .setCancelable(false)
+                    .show()
+            }
         }
     }
 
@@ -257,25 +285,10 @@ class TranslateActivity : AppCompatActivity() {
                 true
             }
             R.id.action_logout -> {
-                logout()
+                AuthManager.logout(this)
                 true
             }
             else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    private fun logout() {
-        prefs.edit().remove("access_token").apply()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finish()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val isDarkTheme = prefs.getBoolean("dark_theme", false)
-        if (currentTheme != isDarkTheme) {
-            currentTheme = isDarkTheme
-            recreate()
         }
     }
 
@@ -445,7 +458,7 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
@@ -477,6 +490,7 @@ class TranslateActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun scrollToLatestMessage() {
         val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
         if (autoScrollEnabled && messageList.isNotEmpty()) {
@@ -490,7 +504,7 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun getTranslationResponse(input: String) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 

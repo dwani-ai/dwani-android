@@ -201,10 +201,8 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun checkAuthentication() {
         lifecycleScope.launch {
-            val tokenExists = prefs.contains("access_token")
-            if (!tokenExists || !TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
-                startActivity(Intent(this@AnswerActivity, LoginActivity::class.java))
-                finish()
+            if (!AuthManager.isAuthenticated(this@AnswerActivity) || !AuthManager.refreshTokenIfNeeded(this@AnswerActivity)) {
+                AuthManager.logout(this@AnswerActivity)
             }
         }
     }
@@ -217,10 +215,23 @@ class AnswerActivity : AppCompatActivity() {
             recreate()
         }
 
+        val dialog = AlertDialog.Builder(this)
+            .setMessage("Checking session...")
+            .setCancelable(false)
+            .create()
+        dialog.show()
+
         lifecycleScope.launch {
-            if (!TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
-                Toast.makeText(this@AnswerActivity, "Session expired. Please log in again.", Toast.LENGTH_SHORT).show()
-                logout()
+            if (AuthManager.refreshTokenIfNeeded(this@AnswerActivity)) {
+                dialog.dismiss()
+            } else {
+                dialog.dismiss()
+                AlertDialog.Builder(this@AnswerActivity)
+                    .setTitle("Session Expired")
+                    .setMessage("Your session could not be refreshed. Please log in again.")
+                    .setPositiveButton("OK") { _, _ -> AuthManager.logout(this@AnswerActivity) }
+                    .setCancelable(false)
+                    .show()
             }
         }
     }
@@ -261,17 +272,11 @@ class AnswerActivity : AppCompatActivity() {
                 true
             }
             R.id.action_logout -> {
-                logout()
+                AuthManager.logout(this)
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
-    }
-
-    private fun logout() {
-        prefs.edit().remove("access_token").apply()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finish()
     }
 
     private fun animateFabRecordingStart() {
@@ -441,7 +446,7 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
@@ -475,7 +480,7 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun getChatResponse(prompt: String) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val languageMap = mapOf(
             "english" to "eng_Latn",

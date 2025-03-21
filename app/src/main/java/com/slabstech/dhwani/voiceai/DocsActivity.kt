@@ -156,10 +156,8 @@ class DocsActivity : AppCompatActivity() {
 
     private fun checkAuthentication() {
         lifecycleScope.launch {
-            val tokenExists = prefs.contains("access_token")
-            if (!tokenExists || !TokenUtils.refreshTokenIfNeeded(this@DocsActivity)) {
-                startActivity(Intent(this@DocsActivity, LoginActivity::class.java))
-                finish()
+            if (!AuthManager.isAuthenticated(this@DocsActivity) || !AuthManager.refreshTokenIfNeeded(this@DocsActivity)) {
+                AuthManager.logout(this@DocsActivity)
             }
         }
     }
@@ -172,10 +170,23 @@ class DocsActivity : AppCompatActivity() {
             recreate()
         }
 
+        val dialog = AlertDialog.Builder(this)
+            .setMessage("Checking session...")
+            .setCancelable(false)
+            .create()
+        dialog.show()
+
         lifecycleScope.launch {
-            if (!TokenUtils.refreshTokenIfNeeded(this@DocsActivity)) {
-                Toast.makeText(this@DocsActivity, "Session expired. Please log in again.", Toast.LENGTH_SHORT).show()
-                logout()
+            if (AuthManager.refreshTokenIfNeeded(this@DocsActivity)) {
+                dialog.dismiss()
+            } else {
+                dialog.dismiss()
+                AlertDialog.Builder(this@DocsActivity)
+                    .setTitle("Session Expired")
+                    .setMessage("Your session could not be refreshed. Please log in again.")
+                    .setPositiveButton("OK") { _, _ -> AuthManager.logout(this@DocsActivity) }
+                    .setCancelable(false)
+                    .show()
             }
         }
     }
@@ -283,7 +294,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun getImageDescriptionAndTranslation(imageFile: File, query: String) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
@@ -407,17 +418,11 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_logout -> {
-                logout()
+                AuthManager.logout(this)
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
-    }
-
-    private fun logout() {
-        prefs.edit().remove("access_token").apply()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finish()
     }
 
     private fun showHistoryDialog() {

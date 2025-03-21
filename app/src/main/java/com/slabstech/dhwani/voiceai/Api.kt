@@ -1,6 +1,5 @@
 package com.slabstech.dhwani.voiceai
 
-import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.preference.PreferenceManager
@@ -77,20 +76,16 @@ object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
 
     private fun getOkHttpClient(context: Context): OkHttpClient {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val authenticator = object : okhttp3.Authenticator {
             override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-                val currentToken = prefs.getString("access_token", null) ?: return null
+                val currentToken = AuthManager.getToken(context) ?: return null
                 try {
                     val refreshResponse = runBlocking {
                         apiService(context).refreshToken("Bearer $currentToken")
                     }
                     val newToken = refreshResponse.access_token
-                    val newExpiryTime = TokenUtils.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
-                    prefs.edit()
-                        .putString("access_token", newToken)
-                        .putLong("token_expiry_time", newExpiryTime)
-                        .apply()
+                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
+                    AuthManager.saveToken(context, newToken, newExpiryTime)
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()
@@ -119,11 +114,5 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
-    }
-}
-
-class DhwaniApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
     }
 }

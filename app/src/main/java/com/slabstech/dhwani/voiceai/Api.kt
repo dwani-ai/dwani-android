@@ -86,7 +86,11 @@ object RetrofitClient {
                         apiService(context).refreshToken("Bearer $currentToken")
                     }
                     val newToken = refreshResponse.access_token
-                    prefs.edit().putString("access_token", newToken).apply()
+                    val newExpiryTime = TokenUtils.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
+                    prefs.edit()
+                        .putString("access_token", newToken)
+                        .putLong("token_expiry_time", newExpiryTime)
+                        .apply()
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()

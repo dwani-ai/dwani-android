@@ -54,6 +54,7 @@ class DocsActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private var currentTheme: Boolean? = null
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
@@ -74,6 +75,7 @@ class DocsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
+        currentTheme = isDarkTheme
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
@@ -153,10 +155,28 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun checkAuthentication() {
-        val token = prefs.getString("access_token", null)
-        if (token == null) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+        lifecycleScope.launch {
+            val tokenExists = prefs.contains("access_token")
+            if (!tokenExists || !TokenUtils.refreshTokenIfNeeded(this@DocsActivity)) {
+                startActivity(Intent(this@DocsActivity, LoginActivity::class.java))
+                finish()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
+        }
+
+        lifecycleScope.launch {
+            if (!TokenUtils.refreshTokenIfNeeded(this@DocsActivity)) {
+                Toast.makeText(this@DocsActivity, "Session expired. Please log in again.", Toast.LENGTH_SHORT).show()
+                logout()
+            }
         }
     }
 

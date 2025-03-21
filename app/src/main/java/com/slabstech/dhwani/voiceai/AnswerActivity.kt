@@ -35,7 +35,6 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -201,10 +200,28 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun checkAuthentication() {
-        val token = prefs.getString("access_token", null)
-        if (token == null) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+        lifecycleScope.launch {
+            val tokenExists = prefs.contains("access_token")
+            if (!tokenExists || !TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
+                startActivity(Intent(this@AnswerActivity, LoginActivity::class.java))
+                finish()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
+        }
+
+        lifecycleScope.launch {
+            if (!TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
+                Toast.makeText(this@AnswerActivity, "Session expired. Please log in again.", Toast.LENGTH_SHORT).show()
+                logout()
+            }
         }
     }
 
@@ -255,15 +272,6 @@ class AnswerActivity : AppCompatActivity() {
         prefs.edit().remove("access_token").apply()
         startActivity(Intent(this, LoginActivity::class.java))
         finish()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val isDarkTheme = prefs.getBoolean("dark_theme", false)
-        if (currentTheme != isDarkTheme) {
-            currentTheme = isDarkTheme
-            recreate()
-        }
     }
 
     private fun animateFabRecordingStart() {

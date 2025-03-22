@@ -11,6 +11,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.*
@@ -29,13 +30,11 @@ import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.text.Editable
-import android.util.Log
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -69,6 +68,7 @@ class AnswerActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private var sessionDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -201,10 +201,47 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun checkAuthentication() {
-        val token = prefs.getString("access_token", null)
-        if (token == null) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+        lifecycleScope.launch {
+            if (!AuthManager.isAuthenticated(this@AnswerActivity) || !AuthManager.refreshTokenIfNeeded(this@AnswerActivity)) {
+                Log.d("AnswerActivity", "Authentication failed, logging out")
+                AuthManager.logout(this@AnswerActivity)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val isDarkTheme = prefs.getBoolean("dark_theme", false)
+        if (currentTheme != isDarkTheme) {
+            currentTheme = isDarkTheme
+            recreate()
+            return // Avoid further execution during recreate
+        }
+
+        sessionDialog = AlertDialog.Builder(this)
+            .setMessage("Checking session...")
+            .setCancelable(false)
+            .create()
+        sessionDialog?.show()
+
+        lifecycleScope.launch {
+            val tokenValid = AuthManager.refreshTokenIfNeeded(this@AnswerActivity)
+            Log.d("AnswerActivity", "onResume: Token valid = $tokenValid")
+            if (tokenValid) {
+                sessionDialog?.dismiss()
+                sessionDialog = null
+            } else {
+                sessionDialog?.dismiss()
+                sessionDialog = null
+                AlertDialog.Builder(this@AnswerActivity)
+                    .setTitle("Session Expired")
+                    .setMessage("Your session could not be refreshed. Please log in again.")
+                    .setPositiveButton("OK") { _, _ ->
+                        AuthManager.logout(this@AnswerActivity)
+                    }
+                    .setCancelable(false)
+                    .show()
+            }
         }
     }
 
@@ -244,25 +281,10 @@ class AnswerActivity : AppCompatActivity() {
                 true
             }
             R.id.action_logout -> {
-                logout()
+                AuthManager.logout(this)
                 true
             }
             else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    private fun logout() {
-        prefs.edit().remove("access_token").apply()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finish()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val isDarkTheme = prefs.getBoolean("dark_theme", false)
-        if (currentTheme != isDarkTheme) {
-            currentTheme = isDarkTheme
-            recreate()
         }
     }
 
@@ -433,7 +455,7 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val language = prefs.getString("language", "kannada") ?: "kannada"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
@@ -467,7 +489,7 @@ class AnswerActivity : AppCompatActivity() {
     }
 
     private fun getChatResponse(prompt: String) {
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val languageMap = mapOf(
             "english" to "eng_Latn",
@@ -552,8 +574,13 @@ class AnswerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        sessionDialog?.dismiss()
+        sessionDialog = null
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
+        audioRecord?.release()
+        audioRecord = null
+        audioFile?.delete()
     }
 }

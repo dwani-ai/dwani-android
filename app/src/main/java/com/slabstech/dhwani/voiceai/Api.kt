@@ -1,6 +1,5 @@
 package com.slabstech.dhwani.voiceai
 
-import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.preference.PreferenceManager
@@ -16,7 +15,7 @@ import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
 data class LoginRequest(val username: String, val password: String)
-data class TokenResponse(val access_token: String, val token_type: String)
+data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
 data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
 data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
@@ -77,16 +76,16 @@ object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
 
     private fun getOkHttpClient(context: Context): OkHttpClient {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val authenticator = object : okhttp3.Authenticator {
             override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-                val currentToken = prefs.getString("access_token", null) ?: return null
+                val refreshToken = AuthManager.getRefreshToken(context) ?: return null
                 try {
                     val refreshResponse = runBlocking {
-                        apiService(context).refreshToken("Bearer $currentToken")
+                        apiService(context).refreshToken("Bearer $refreshToken")
                     }
                     val newToken = refreshResponse.access_token
-                    prefs.edit().putString("access_token", newToken).apply()
+                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    AuthManager.saveTokens(context, newToken, refreshResponse.refresh_token, newExpiryTime)
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()
@@ -115,11 +114,5 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
-    }
-}
-
-class DhwaniApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
     }
 }

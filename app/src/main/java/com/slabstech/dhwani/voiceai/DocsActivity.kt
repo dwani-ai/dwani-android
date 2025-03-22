@@ -84,7 +84,6 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
-            // Optional: Keep initial permission request for older Android versions
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
                     this,
@@ -247,9 +246,9 @@ class DocsActivity : AppCompatActivity() {
             }
         }
 
-        val defaultQuery = "What is in this document?"
+        val defaultQuery = "Describe the image"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message("Query: $defaultQuery (File: $fileName)", timestamp, true)
+        val message = Message(defaultQuery, timestamp, true, uri) // Use imageUri for thumbnail
         messageList.add(message)
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()

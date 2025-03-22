@@ -11,6 +11,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.*
@@ -29,7 +30,6 @@ import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.text.Editable
-import android.util.Log
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,6 +68,7 @@ class AnswerActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private var sessionDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -201,7 +202,8 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun checkAuthentication() {
         lifecycleScope.launch {
-            if (!AuthManager.isAuthenticated(this@AnswerActivity) || !TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
+            if (!AuthManager.isAuthenticated(this@AnswerActivity) || !AuthManager.refreshTokenIfNeeded(this@AnswerActivity)) {
+                Log.d("AnswerActivity", "Authentication failed, logging out")
                 AuthManager.logout(this@AnswerActivity)
             }
         }
@@ -213,23 +215,30 @@ class AnswerActivity : AppCompatActivity() {
         if (currentTheme != isDarkTheme) {
             currentTheme = isDarkTheme
             recreate()
+            return // Avoid further execution during recreate
         }
 
-        val dialog = AlertDialog.Builder(this)
+        sessionDialog = AlertDialog.Builder(this)
             .setMessage("Checking session...")
             .setCancelable(false)
             .create()
-        dialog.show()
+        sessionDialog?.show()
 
         lifecycleScope.launch {
-            if (TokenUtils.refreshTokenIfNeeded(this@AnswerActivity)) {
-                dialog.dismiss()
+            val tokenValid = AuthManager.refreshTokenIfNeeded(this@AnswerActivity)
+            Log.d("AnswerActivity", "onResume: Token valid = $tokenValid")
+            if (tokenValid) {
+                sessionDialog?.dismiss()
+                sessionDialog = null
             } else {
-                dialog.dismiss()
+                sessionDialog?.dismiss()
+                sessionDialog = null
                 AlertDialog.Builder(this@AnswerActivity)
                     .setTitle("Session Expired")
                     .setMessage("Your session could not be refreshed. Please log in again.")
-                    .setPositiveButton("OK") { _, _ -> AuthManager.logout(this@AnswerActivity) }
+                    .setPositiveButton("OK") { _, _ ->
+                        AuthManager.logout(this@AnswerActivity)
+                    }
                     .setCancelable(false)
                     .show()
             }
@@ -565,8 +574,13 @@ class AnswerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        sessionDialog?.dismiss()
+        sessionDialog = null
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
+        audioRecord?.release()
+        audioRecord = null
+        audioFile?.delete()
     }
 }

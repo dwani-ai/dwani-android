@@ -202,7 +202,7 @@ class TranslateActivity : AppCompatActivity() {
 
     private fun checkAuthentication() {
         lifecycleScope.launch {
-            if (!AuthManager.isAuthenticated(this@TranslateActivity) || !TokenUtils.refreshTokenIfNeeded(this@TranslateActivity)) {
+            if (!AuthManager.isAuthenticated(this@TranslateActivity) || !AuthManager.refreshTokenIfNeeded(this@TranslateActivity)) {
                 AuthManager.logout(this@TranslateActivity)
             }
         }
@@ -223,7 +223,8 @@ class TranslateActivity : AppCompatActivity() {
         dialog.show()
 
         lifecycleScope.launch {
-            if (TokenUtils.refreshTokenIfNeeded(this@TranslateActivity)) {
+            val tokenValid = AuthManager.refreshTokenIfNeeded(this@TranslateActivity)
+            if (tokenValid) {
                 dialog.dismiss()
             } else {
                 dialog.dismiss()

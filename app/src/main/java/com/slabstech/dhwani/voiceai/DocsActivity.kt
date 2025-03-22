@@ -84,6 +84,7 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
+            // Optional: Keep initial permission request for older Android versions
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
                     this,
@@ -93,11 +94,7 @@ class DocsActivity : AppCompatActivity() {
             }
 
             attachFab.setOnClickListener {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                    pickFileLauncher.launch("*/*")
-                } else {
-                    Toast.makeText(this, "Storage permission required", Toast.LENGTH_SHORT).show()
-                }
+                pickFileLauncher.launch("*/*")
             }
 
             bottomNavigation.setOnItemSelectedListener { item ->
@@ -157,7 +154,8 @@ class DocsActivity : AppCompatActivity() {
         dialog.show()
 
         lifecycleScope.launch {
-            if (AuthManager.refreshTokenIfNeeded(this@DocsActivity)) {
+            val tokenValid = AuthManager.refreshTokenIfNeeded(this@DocsActivity)
+            if (tokenValid) {
                 dialog.dismiss()
             } else {
                 dialog.dismiss()
@@ -249,7 +247,6 @@ class DocsActivity : AppCompatActivity() {
             }
         }
 
-        // Default query for file upload (can be customized via settings or dialog if needed)
         val defaultQuery = "What is in this document?"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         val message = Message("Query: $defaultQuery (File: $fileName)", timestamp, true)
@@ -285,7 +282,7 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File) {
         val token = AuthManager.getToken(this) ?: return
-        val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
+        val srcLang = "kan_Knda"
         val tgtLang = "kan_Knda"
 
         lifecycleScope.launch {
@@ -320,7 +317,7 @@ class DocsActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == READ_STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            // Permission granted
+            pickFileLauncher.launch("*/*")
         }
     }
 }

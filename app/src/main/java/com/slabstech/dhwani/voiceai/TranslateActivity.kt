@@ -552,7 +552,8 @@ class TranslateActivity : AppCompatActivity() {
                     message = message,
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE }
+                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
+                    srcLang = tgtLang // Pass the target language as the source for TTS
                 )
             } catch (e: Exception) {
                 Log.e("TranslateActivity", "Translation failed: ${e.message}", e)

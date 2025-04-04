@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.View
 import android.widget.ProgressBar
@@ -36,6 +38,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class DocsActivity : AppCompatActivity() {
 
@@ -239,10 +243,37 @@ class DocsActivity : AppCompatActivity() {
     private fun handleFileUpload(uri: Uri) {
         val fileName = getFileName(uri)
         val inputStream = contentResolver.openInputStream(uri)
-        val file = File(cacheDir, fileName)
-        inputStream?.use { input ->
-            FileOutputStream(file).use { output ->
-                input.copyTo(output)
+        var file = File(cacheDir, fileName)
+
+        // Check if it's an image and compress if necessary
+        val isImage = fileName.lowercase().endsWith(".jpg") ||
+                fileName.lowercase().endsWith(".jpeg") ||
+                fileName.lowercase().endsWith(".png")
+
+        if (isImage) {
+            try {
+                // First copy the original file
+                inputStream?.use { input ->
+                    FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Compress the image
+                file = compressImage(file)
+            } catch (e: Exception) {
+                Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
+                Toast.makeText(this, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
+                return
+            } finally {
+                inputStream?.close()
+            }
+        } else {
+            // For non-image files, just copy as is
+            inputStream?.use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
             }
         }
 
@@ -254,6 +285,52 @@ class DocsActivity : AppCompatActivity() {
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
         getVisualQueryResponse(defaultQuery, file)
+    }
+
+    private fun compressImage(inputFile: File): File {
+        val maxSize = 1_000_000 // 1MB in bytes
+        val outputFile = File(cacheDir, "compressed_${inputFile.name}")
+
+        try {
+            // Decode the bitmap with sampling
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+                BitmapFactory.decodeFile(inputFile.absolutePath, this)
+
+                // Calculate sample size to reduce dimensions
+                var sampleSize = 1
+                if (outWidth > 1000 || outHeight > 1000) {
+                    val scale = maxOf(outWidth, outHeight) / 1000.0
+                    sampleSize = Math.pow(2.0, Math.ceil(Math.log(scale) / Math.log(2.0))).toInt()
+                }
+                inSampleSize = sampleSize
+                inJustDecodeBounds = false
+            }
+
+            var bitmap = BitmapFactory.decodeFile(inputFile.absolutePath, options)
+
+            // Compress quality until size is under 1MB
+            var quality = 90
+            val baos = ByteArrayOutputStream()
+
+            do {
+                baos.reset()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+                quality -= 10
+            } while (baos.size() > maxSize && quality > 10)
+
+            // Write compressed image to file
+            FileOutputStream(outputFile).use { fos ->
+                fos.write(baos.toByteArray())
+            }
+
+            bitmap.recycle()
+            return outputFile
+
+        } catch (e: Exception) {
+            Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
+            throw e
+        }
     }
 
     private fun getFileName(uri: Uri): String {
@@ -281,8 +358,19 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File) {
         val token = AuthManager.getToken(this) ?: return
-        val srcLang = "kan_Knda"
-        val tgtLang = "kan_Knda"
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu",
+            "German" to "deu_Latn",
+            "French" to "fra_Latn",
+            "Dutch" to "nld_Latn"
+        )
+        val srcLang = prefs.getString("language", "kannada")?.let { languageMap[it] } ?: "kan_Knda"
+        val tgtLang = prefs.getString("language", "kannada")?.let { languageMap[it] } ?: "kan_Knda"
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
@@ -298,6 +386,16 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+                SpeechUtils.textToSpeech(
+                    context = this@DocsActivity,
+                    scope = lifecycleScope,
+                    text = answerText,
+                    message = message,
+                    recyclerView = historyRecyclerView,
+                    adapter = messageAdapter,
+                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
+                    srcLang = tgtLang // Pass the target language as the source for TTS
+                )
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Visual query failed: ${e.message}", e)
                 Toast.makeText(this@DocsActivity, "Query error: ${e.message}", Toast.LENGTH_LONG).show()

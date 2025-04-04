@@ -497,10 +497,18 @@ class AnswerActivity : AppCompatActivity() {
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
             "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu"
+            "telugu" to "tel_Telu",
+            "German" to "deu_Latn",
+            "French" to "fra_Latn",
+            "Dutch" to "nld_Latn",
+            "Spanish" to "spa_Latn",
+            "Italian" to "ita_Latn",
+            "Portuguese" to "por_Latn",
+            "Russian" to "rus_Cyrl",
+            "Polish" to "pol_Latn"
         )
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
-        val tgtLang = srcLang
+        val tgtLang = srcLang // Assuming the response should be in the same language as the input
 
         val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
 
@@ -524,7 +532,8 @@ class AnswerActivity : AppCompatActivity() {
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible ->
                         ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                    }
+                    },
+                    srcLang = tgtLang // Pass the target language as the source for TTS
                 )
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Chat failed: ${e.message}", e)

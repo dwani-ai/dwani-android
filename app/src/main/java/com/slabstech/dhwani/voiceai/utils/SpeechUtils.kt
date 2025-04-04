@@ -20,6 +20,22 @@ import java.io.FileOutputStream
 object SpeechUtils {
     private const val AUTO_PLAY_KEY = "auto_play_tts"
 
+    // Language codes from resources and AnswerActivity
+    private val europeanLanguages = setOf(
+        "eng_Latn", // English
+        "deu_Latn", // German (assumed from "German")
+        "fra_Latn", // French
+        "nld_Latn"  // Dutch (ISO 639-3 code for Dutch)
+    )
+
+    private val indianLanguages = setOf(
+        "hin_Deva",  // Hindi
+        "kan_Knda",  // Kannada
+        "tam_Taml",  // Tamil
+        "mal_Mlym",  // Malayalam
+        "tel_Telu"   // Telugu
+    )
+
     fun textToSpeech(
         context: Context,
         scope: LifecycleCoroutineScope,
@@ -27,15 +43,42 @@ object SpeechUtils {
         message: Message,
         recyclerView: RecyclerView,
         adapter: MessageAdapter,
-        ttsProgressBarVisibility: (Boolean) -> Unit
+        ttsProgressBarVisibility: (Boolean) -> Unit,
+        srcLang: String? = null // Source language parameter
     ) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean("tts_enabled", false)) return
         val token = prefs.getString("access_token", null) ?: return
-        val voice = prefs.getString(
-            "tts_voice",
-            "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-        ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+
+        // Determine the model and voice based on source language
+        val (model, voice) = when {
+            srcLang != null && europeanLanguages.contains(srcLang) -> {
+                Pair(
+                    "parler-tts/parler-tts-mini-multilingual-v1.1",
+                    "Daniel's voice is monotone yet slightly fast in delivery, with a very close recording that almost has no background noise."
+                )
+            }
+            srcLang != null && indianLanguages.contains(srcLang) -> {
+                Pair(
+                    "ai4bharat/indic-parler-tts",
+                    prefs.getString(
+                        "tts_voice",
+                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+                )
+            }
+            else -> {
+                // Default to Indian model if no language specified or unrecognized
+                Pair(
+                    "ai4bharat/indic-parler-tts",
+                    prefs.getString(
+                        "tts_voice",
+                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
+                )
+            }
+        }
+
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
 
         scope.launch {
@@ -44,7 +87,7 @@ object SpeechUtils {
                 val response = RetrofitClient.apiService(context).textToSpeech(
                     input = text,
                     voice = voice,
-                    model = "ai4bharat/indic-parler-tts",
+                    model = model,
                     responseFormat = "mp3",
                     speed = 1.0,
                     token = "Bearer $token"

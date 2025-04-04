@@ -460,7 +460,7 @@ class TranslateActivity : AppCompatActivity() {
 
     private fun sendAudioToApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: return
-        val language = prefs.getString("language", "kannada") ?: "kannada"
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -468,7 +468,7 @@ class TranslateActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, language, "Bearer $token")
+                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, selectedLanguage, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -506,7 +506,24 @@ class TranslateActivity : AppCompatActivity() {
 
     private fun getTranslationResponse(input: String) {
         val token = AuthManager.getToken(this) ?: return
-        val srcLang = "kan_Knda" // Hardcoded for now; can be made configurable
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu",
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
+        )
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
@@ -553,7 +570,7 @@ class TranslateActivity : AppCompatActivity() {
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang // Pass the target language as the source for TTS
+                    srcLang = tgtLang
                 )
             } catch (e: Exception) {
                 Log.e("TranslateActivity", "Translation failed: ${e.message}", e)

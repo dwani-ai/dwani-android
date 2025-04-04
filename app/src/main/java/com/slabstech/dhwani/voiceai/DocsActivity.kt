@@ -175,7 +175,7 @@ class DocsActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         menu.findItem(R.id.action_auto_scroll)?.isChecked = true
-        menu.findItem(R.id.action_target_language)?.isVisible = false // Hide language spinner
+        menu.findItem(R.id.action_target_language)?.isVisible = false
         return true
     }
 
@@ -245,21 +245,17 @@ class DocsActivity : AppCompatActivity() {
         val inputStream = contentResolver.openInputStream(uri)
         var file = File(cacheDir, fileName)
 
-        // Check if it's an image and compress if necessary
         val isImage = fileName.lowercase().endsWith(".jpg") ||
                 fileName.lowercase().endsWith(".jpeg") ||
                 fileName.lowercase().endsWith(".png")
 
         if (isImage) {
             try {
-                // First copy the original file
                 inputStream?.use { input ->
                     FileOutputStream(file).use { output ->
                         input.copyTo(output)
                     }
                 }
-
-                // Compress the image
                 file = compressImage(file)
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
@@ -269,7 +265,6 @@ class DocsActivity : AppCompatActivity() {
                 inputStream?.close()
             }
         } else {
-            // For non-image files, just copy as is
             inputStream?.use { input ->
                 FileOutputStream(file).use { output ->
                     input.copyTo(output)
@@ -279,7 +274,7 @@ class DocsActivity : AppCompatActivity() {
 
         val defaultQuery = "Describe the image"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message(defaultQuery, timestamp, true, uri) // Use imageUri for thumbnail
+        val message = Message(defaultQuery, timestamp, true, uri)
         messageList.add(message)
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
@@ -288,16 +283,14 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun compressImage(inputFile: File): File {
-        val maxSize = 1_000_000 // 1MB in bytes
+        val maxSize = 1_000_000
         val outputFile = File(cacheDir, "compressed_${inputFile.name}")
 
         try {
-            // Decode the bitmap with sampling
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
                 BitmapFactory.decodeFile(inputFile.absolutePath, this)
 
-                // Calculate sample size to reduce dimensions
                 var sampleSize = 1
                 if (outWidth > 1000 || outHeight > 1000) {
                     val scale = maxOf(outWidth, outHeight) / 1000.0
@@ -309,7 +302,6 @@ class DocsActivity : AppCompatActivity() {
 
             var bitmap = BitmapFactory.decodeFile(inputFile.absolutePath, options)
 
-            // Compress quality until size is under 1MB
             var quality = 90
             val baos = ByteArrayOutputStream()
 
@@ -319,7 +311,6 @@ class DocsActivity : AppCompatActivity() {
                 quality -= 10
             } while (baos.size() > maxSize && quality > 10)
 
-            // Write compressed image to file
             FileOutputStream(outputFile).use { fos ->
                 fos.write(baos.toByteArray())
             }
@@ -358,6 +349,7 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File) {
         val token = AuthManager.getToken(this) ?: return
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
@@ -365,12 +357,17 @@ class DocsActivity : AppCompatActivity() {
             "tamil" to "tam_Taml",
             "malayalam" to "mal_Mlym",
             "telugu" to "tel_Telu",
-            "German" to "deu_Latn",
-            "French" to "fra_Latn",
-            "Dutch" to "nld_Latn"
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
         )
-        val srcLang = prefs.getString("language", "kannada")?.let { languageMap[it] } ?: "kan_Knda"
-        val tgtLang = prefs.getString("language", "kannada")?.let { languageMap[it] } ?: "kan_Knda"
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
+        val tgtLang = srcLang // Response in the same language as input
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
@@ -394,7 +391,7 @@ class DocsActivity : AppCompatActivity() {
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang // Pass the target language as the source for TTS
+                    srcLang = tgtLang
                 )
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Visual query failed: ${e.message}", e)

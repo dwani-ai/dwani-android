@@ -498,14 +498,14 @@ class AnswerActivity : AppCompatActivity() {
             "tamil" to "tam_Taml",
             "malayalam" to "mal_Mlym",
             "telugu" to "tel_Telu",
-            "German" to "deu_Latn",
-            "French" to "fra_Latn",
-            "Dutch" to "nld_Latn",
-            "Spanish" to "spa_Latn",
-            "Italian" to "ita_Latn",
-            "Portuguese" to "por_Latn",
-            "Russian" to "rus_Cyrl",
-            "Polish" to "pol_Latn"
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
         )
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
         val tgtLang = srcLang // Response in the same language as input

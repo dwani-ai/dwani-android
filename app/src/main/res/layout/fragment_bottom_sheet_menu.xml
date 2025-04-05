@@ -36,4 +36,15 @@
         android:textColor="#000000"
         android:padding="12dp"
         android:background="?android:attr/selectableItemBackground"/>
+
+    <TextView
+        android:id="@+id/option_voice_detection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Dhwnani"
+        android:textSize="18sp"
+        android:textColor="#000000"
+        android:padding="12dp"
+        android:background="?android:attr/selectableItemBackground"/>
+
 </LinearLayout>

@@ -41,6 +41,7 @@
         <activity android:name=".AnswerActivity" />
         <activity android:name=".TranslateActivity" />
         <activity android:name=".DocsActivity" />
+        <activity android:name=".VoiceDetectionActivity" />
 
         <service
             android:name="androidx.work.impl.background.systemalarm.SystemAlarmService"

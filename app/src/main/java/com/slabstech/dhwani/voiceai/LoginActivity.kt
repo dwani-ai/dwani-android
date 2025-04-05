@@ -78,7 +78,7 @@ class LoginActivity : AppCompatActivity() {
 
     private fun proceedToAnswerActivity() {
         Log.d(TAG, "Proceeding to AnswerActivity")
-        startActivity(Intent(this@LoginActivity, AnswerActivity::class.java))
+        startActivity(Intent(this@LoginActivity, VoiceDetectionActivity::class.java))
         finish()
     }
 

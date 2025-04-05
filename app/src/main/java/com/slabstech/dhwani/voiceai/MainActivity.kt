@@ -34,16 +34,20 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(this, DocsActivity::class.java))
                     true
                 }
+                R.id.nav_voice -> {
+                    startActivity(Intent(this, VoiceDetectionActivity::class.java))
+                    true
+                }
                 else -> false
             }
         }
 
         // Launch AnswerActivity by default and finish MainActivity
         if (savedInstanceState == null) {
-            startActivity(Intent(this, AnswerActivity::class.java))
+            startActivity(Intent(this, VoiceDetectionActivity::class.java))
             finish()
         }
 
-        bottomNavigation.selectedItemId = R.id.nav_answer
+        bottomNavigation.selectedItemId = R.id.nav_voice
     }
 }

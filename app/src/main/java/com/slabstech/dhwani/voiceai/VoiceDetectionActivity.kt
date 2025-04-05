@@ -38,19 +38,22 @@ import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
 
+    // Constants for audio configuration
     private val RECORD_AUDIO_PERMISSION_CODE = 101
-    private var audioRecord: AudioRecord? = null
-    private lateinit var toggleRecordButton: ToggleButton
-    private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MIN_ENERGY_THRESHOLD = 0.02f // Adjust if voice detection is too strict
-    private val CHUNK_DURATION_MS = 5000L // 5 seconds
+    private val MIN_ENERGY_THRESHOLD = 0.02f // Threshold for voice detection (adjust as needed)
+    private val CHUNK_DURATION_MS = 5000L // 5-second chunks
+
+    // UI and state variables
+    private var audioRecord: AudioRecord? = null
+    private lateinit var toggleRecordButton: ToggleButton
+    private var isRecording = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
 
-    // Retrofit API setup (adjust base URL and token as needed)
+    // Retrofit API setup
     private val speechToSpeechApi: SpeechToSpeechApi by lazy {
         val okHttpClient = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -59,12 +62,13 @@ class VoiceDetectionActivity : AppCompatActivity() {
             .build()
 
         Retrofit.Builder()
-            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/")
+            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/") // Replace with your API base URL
             .client(okHttpClient)
             .build()
             .create(SpeechToSpeechApi::class.java)
     }
 
+    // API interface definition
     interface SpeechToSpeechApi {
         @Multipart
         @POST("v1/speech_to_speech")
@@ -82,6 +86,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
         toggleRecordButton = findViewById(R.id.toggleRecordButton)
 
+        // Check and request recording permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
@@ -90,18 +95,21 @@ class VoiceDetectionActivity : AppCompatActivity() {
             )
         }
 
+        // Toggle button listener to start/stop recording
         toggleRecordButton.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) startRecording() else stopRecording()
         }
     }
 
     private fun startRecording() {
+        // Verify permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
             toggleRecordButton.isChecked = false
             return
         }
 
+        // Initialize AudioRecord
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * 4
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
@@ -123,6 +131,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
         Log.d("VoiceDetection", "Recording started with buffer size: $bufferSize")
 
+        // Launch recording coroutine
         lifecycleScope.launch(Dispatchers.IO) {
             val audioBuffer = ByteArray(bufferSize)
             val recordedData = mutableListOf<Byte>()
@@ -148,12 +157,13 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 }
             }
 
-            // Process any remaining data
+            // Process remaining data when recording stops
             if (recordedData.isNotEmpty()) {
                 val finalChunk = recordedData.toByteArray()
                 if (hasVoice(finalChunk)) processAudioChunk(finalChunk)
             }
 
+            // Cleanup
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
@@ -168,6 +178,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
+    // Check if audio chunk contains voice based on energy threshold
     private fun hasVoice(audioData: ByteArray): Boolean {
         var maxEnergy = 0f
         val chunkSize = 1024
@@ -182,6 +193,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         return false
     }
 
+    // Calculate energy of an audio buffer
     private fun calculateEnergy(buffer: ByteArray, bytesRead: Int): Float {
         var sum = 0L
         for (i in 0 until bytesRead step 2) {
@@ -192,6 +204,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         return sqrt(meanSquare.toDouble()).toFloat() / 32768.0f
     }
 
+    // Write PCM data to WAV file
     private fun writeWavFile(pcmData: ByteArray, outputFile: File) {
         FileOutputStream(outputFile).use { fos ->
             val totalAudioLen = pcmData.size
@@ -224,6 +237,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Log.d("VoiceDetection", "WAV file written: ${outputFile.length()} bytes")
     }
 
+    // Process audio chunk and send to API
     private fun processAudioChunk(audioData: ByteArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             val chunkFile = File(cacheDir, "voice_chunk_${System.currentTimeMillis()}.wav")
@@ -237,8 +251,9 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
+    // Send audio file to API
     private fun sendAudioToApi(audioFile: File) {
-        val token = "YOUR_AUTH_TOKEN" // Replace with your token retrieval logic
+        val token = "YOUR_AUTH_TOKEN" // Replace with your actual token retrieval logic
         val language = "kannada" // Adjust based on your app's settings
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
@@ -282,6 +297,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
+    // Play the API response audio
     private fun playAudio(audioFile: File) {
         mediaPlayer?.release()
         latestAudioFile?.delete()

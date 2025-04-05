@@ -32,6 +32,16 @@
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         android:layout_margin="8dp"/>
 
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/historyRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="120dp"
+        android:padding="8dp"
+        android:clipToPadding="false"/>
+
     <LinearLayout
         android:id="@+id/controlBar"
         android:layout_width="match_parent"
@@ -42,8 +52,8 @@
         android:elevation="4dp"
         android:padding="8dp"
         app:layout_dodgeInsetEdges="bottom"
-        android:layout_gravity="center_vertical"
-        android:layout_marginTop="24dp">
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="56dp">
 
         <Button
             android:id="@+id/startRecordingButton"
@@ -85,5 +95,4 @@
         android:visibility="gone"
         android:layout_gravity="center"
         android:indeterminateTint="@color/whatsapp_green"/>
-
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

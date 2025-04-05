@@ -122,6 +122,16 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
+                    R.id.nav_voice -> {
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Voice?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, VoiceDetectionActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
+                    }
                     R.id.nav_docs -> true
                     else -> false
                 }

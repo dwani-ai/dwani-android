@@ -68,6 +68,15 @@ interface ApiService {
         @Header("Authorization") token: String
     ): VisualQueryResponse
 
+    @Multipart
+    @POST("v1/speech_to_speech")
+    suspend fun speechToSpeech(
+        @Query("language") language: String,
+        @Part file: MultipartBody.Part,
+        @Part("voice") voice: RequestBody,
+        @Header("Authorization") token: String
+    ): ResponseBody
+
     @POST("v1/refresh")
     suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
 }

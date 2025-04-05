@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Log
@@ -12,6 +13,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -21,19 +23,33 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Retrofit
+import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
+import retrofit2.http.Query
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
@@ -46,18 +62,48 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var toolbar: Toolbar
+    private lateinit var historyRecyclerView: RecyclerView
     private var isRecording = false
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MIN_ENERGY_THRESHOLD = 0.02f // VAD sensitivity
-    private val SILENCE_DURATION_MS = 1000L // 1 second of silence to stop
+    private val MIN_ENERGY_THRESHOLD = 0.02f
+    private val SILENCE_DURATION_MS = 1000L
     private val MIN_RECORDING_DURATION_MS = 1000L
     private var recordingStartTime: Long = 0L
     private var lastVoiceActivityTime: Long = 0L
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var sessionDialog: AlertDialog? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private val messageList = mutableListOf<Message>()
+    private lateinit var messageAdapter: MessageAdapter
+
+    // Hardcoded Retrofit setup
+    private val speechToSpeechApi: SpeechToSpeechApi by lazy {
+        val okHttpClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        Retrofit.Builder()
+            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/")
+            .client(okHttpClient)
+            .build()
+            .create(SpeechToSpeechApi::class.java)
+    }
+
+    interface SpeechToSpeechApi {
+        @Multipart
+        @POST("v1/speech_to_speech")
+        suspend fun speechToSpeech(
+            @Query("language") language: String,
+            @Part file: MultipartBody.Part,
+            @Part("voice") voice: RequestBody,
+            @Header("Authorization") token: String
+        ): ResponseBody
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -75,9 +121,22 @@ class VoiceDetectionActivity : AppCompatActivity() {
             audioLevelBar = findViewById(R.id.audioLevelBar)
             progressBar = findViewById(R.id.progressBar)
             toolbar = findViewById(R.id.toolbar)
+            historyRecyclerView = findViewById(R.id.historyRecyclerView)
             val bottomNavigation = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
             setSupportActionBar(toolbar)
+
+            messageAdapter = MessageAdapter(messageList, { position ->
+                showMessageOptionsDialog(position)
+            }, { message, button ->
+                toggleAudioPlayback(message, button)
+            })
+            historyRecyclerView.apply {
+                layoutManager = LinearLayoutManager(this@VoiceDetectionActivity)
+                adapter = messageAdapter
+                visibility = View.VISIBLE
+                setBackgroundColor(ContextCompat.getColor(this@VoiceDetectionActivity, android.R.color.transparent))
+            }
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
@@ -132,7 +191,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     else -> false
                 }
             }
-            bottomNavigation.selectedItemId = R.id.nav_answer // Default selection
+            bottomNavigation.selectedItemId = R.id.nav_answer
         } catch (e: Exception) {
             Log.e("VoiceDetectionActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -187,6 +246,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        menu.findItem(R.id.action_auto_scroll)?.isChecked = true
         return true
     }
 
@@ -194,6 +254,15 @@ class VoiceDetectionActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_auto_scroll -> {
+                item.isChecked = !item.isChecked
+                true
+            }
+            R.id.action_clear -> {
+                messageList.clear()
+                messageAdapter.notifyDataSetChanged()
                 true
             }
             R.id.action_logout -> {
@@ -231,6 +300,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
         startButton.isEnabled = false
         stopButton.isEnabled = true
 
+        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        val queryMessage = Message("Voice Query: Recording...", timestamp, true)
+        messageList.add(queryMessage)
+        messageAdapter.notifyItemInserted(messageList.size - 1)
+        scrollToLatestMessage()
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 while (isRecording) {
@@ -263,17 +338,18 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 val duration = System.currentTimeMillis() - recordingStartTime
                 if (duration >= MIN_RECORDING_DURATION_MS && recordedData.isNotEmpty()) {
                     writeWavFile(recordedData.toByteArray())
-                    audioFile?.let { sendAudioToApi(it) }
+                    audioFile?.let { sendAudioToSpeechApi(it) }
                 } else {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@VoiceDetectionActivity, "Recording too short or no voice detected", Toast.LENGTH_SHORT).show()
+                        messageList.remove(queryMessage)
+                        messageAdapter.notifyItemRemoved(messageList.size)
                     }
                     audioFile?.delete()
                 }
                 withContext(Dispatchers.Main) {
                     startButton.isEnabled = true
                     stopButton.isEnabled = false
-                    progressBar.visibility = View.GONE
                 }
             }
         }
@@ -325,35 +401,99 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendAudioToApi(audioFile: File) {
+    private fun sendAudioToSpeechApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@VoiceDetectionActivity)
-                    .transcribeAudio(filePart, selectedLanguage, "Bearer $token")
-                val voiceQueryText = response.text
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                if (voiceQueryText.isNotEmpty()) {
-                    Toast.makeText(this@VoiceDetectionActivity, "Transcribed: $voiceQueryText [$timestamp]", Toast.LENGTH_LONG).show()
-                    // Optionally, redirect to AnswerActivity with the query
-                    val intent = Intent(this@VoiceDetectionActivity, AnswerActivity::class.java)
-                    intent.putExtra("voice_query", voiceQueryText)
-                    startActivity(intent)
+                val response = speechToSpeechApi.speechToSpeech(
+                    language = selectedLanguage,
+                    file = filePart,
+                    voice = voicePart,
+                    token = "Bearer $token"
+                )
+
+                val audioBytes = response.bytes()
+                if (audioBytes.isNotEmpty()) {
+                    val responseAudioFile = File(cacheDir, "speech_output_${System.currentTimeMillis()}.mp3")
+                    FileOutputStream(responseAudioFile).use { fos -> fos.write(audioBytes) }
+
+                    val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    val responseMessage = Message("Response: Audio", timestamp, false, audioFile = responseAudioFile)
+                    messageList.add(responseMessage)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    scrollToLatestMessage()
+
+                    SpeechUtils.playAudio(
+                        context = this@VoiceDetectionActivity,
+                        audioFile = responseAudioFile,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        message = responseMessage,
+                        playIconResId = android.R.drawable.ic_media_play,
+                        stopIconResId = R.drawable.ic_media_stop
+                    )
                 } else {
-                    Toast.makeText(this@VoiceDetectionActivity, "No voice detected", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceDetectionActivity, "Empty audio response", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e("VoiceDetectionActivity", "Transcription failed: ${e.message}", e)
+                Log.e("VoiceDetectionActivity", "Speech-to-Speech failed: ${e.message}", e)
                 Toast.makeText(this@VoiceDetectionActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
                 audioFile.delete()
+            }
+        }
+    }
+
+    private fun showMessageOptionsDialog(position: Int) {
+        if (position < 0 || position >= messageList.size) return
+
+        val message = messageList[position]
+        val options = arrayOf("Delete")
+        AlertDialog.Builder(this)
+            .setTitle("Message Options")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        messageList.removeAt(position)
+                        messageAdapter.notifyItemRemoved(position)
+                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun toggleAudioPlayback(message: Message, button: ImageButton) {
+        mediaPlayer = SpeechUtils.toggleAudioPlayback(
+            context = this,
+            message = message,
+            button = button,
+            recyclerView = historyRecyclerView,
+            adapter = messageAdapter,
+            mediaPlayer = mediaPlayer,
+            playIconResId = android.R.drawable.ic_media_play,
+            stopIconResId = R.drawable.ic_media_stop
+        )
+    }
+
+    private fun scrollToLatestMessage() {
+        val autoScrollEnabled = toolbar.menu.findItem(R.id.action_auto_scroll)?.isChecked ?: false
+        if (autoScrollEnabled && messageList.isNotEmpty()) {
+            historyRecyclerView.post {
+                val itemCount = messageAdapter.itemCount
+                if (itemCount > 0) {
+                    historyRecyclerView.smoothScrollToPosition(itemCount - 1)
+                }
             }
         }
     }
@@ -374,8 +514,11 @@ class VoiceDetectionActivity : AppCompatActivity() {
         super.onDestroy()
         sessionDialog?.dismiss()
         sessionDialog = null
+        mediaPlayer?.release()
+        mediaPlayer = null
         audioRecord?.release()
         audioRecord = null
         audioFile?.delete()
+        messageList.forEach { it.audioFile?.delete() }
     }
 }

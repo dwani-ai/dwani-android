@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.widget.ProgressBar
 import android.widget.Toast
 import android.widget.ToggleButton
@@ -24,6 +23,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -61,11 +62,13 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MIN_ENERGY_THRESHOLD = 0.02f
     private val MIN_RECORDING_DURATION_MS = 1000L
+    private val CHUNK_DURATION_MS = 5000L // 5 seconds
     private var recordingStartTime: Long = 0L
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var sessionDialog: AlertDialog? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var chunkProcessingJob: Job? = null
 
     // Hardcoded Retrofit setup
     private val speechToSpeechApi: SpeechToSpeechApi by lazy {
@@ -254,6 +257,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         audioFile = File(cacheDir, "voice_detection_audio.wav")
         val audioBuffer = ByteArray(bufferSize)
         val recordedData = mutableListOf<Byte>()
+        var lastChunkTime = 0L
 
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
@@ -261,6 +265,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
         Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
 
+        // Recording coroutine
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 while (isRecording) {
@@ -273,7 +278,21 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         if (energy > MIN_ENERGY_THRESHOLD) {
                             recordedData.addAll(audioBuffer.take(bytesRead))
                         }
+
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastChunkTime >= CHUNK_DURATION_MS && recordedData.isNotEmpty()) {
+                            val chunkData = recordedData.toByteArray()
+                            recordedData.clear() // Clear for the next chunk
+                            processAudioChunk(chunkData)
+                            lastChunkTime = currentTime
+                        }
                     }
+                }
+
+                // Process any remaining audio when recording stops
+                if (recordedData.isNotEmpty()) {
+                    val finalChunkData = recordedData.toByteArray()
+                    processAudioChunk(finalChunkData)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -283,16 +302,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 audioRecord?.stop()
                 audioRecord?.release()
                 audioRecord = null
-                val duration = System.currentTimeMillis() - recordingStartTime
-                if (duration >= MIN_RECORDING_DURATION_MS && recordedData.isNotEmpty()) {
-                    writeWavFile(recordedData.toByteArray())
-                    audioFile?.let { sendAudioToSpeechApi(it) }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@VoiceDetectionActivity, "Recording too short or no voice detected", Toast.LENGTH_SHORT).show()
-                    }
-                    audioFile?.delete()
-                }
                 withContext(Dispatchers.Main) {
                     toggleRecordButton.isChecked = false
                 }
@@ -315,34 +324,46 @@ class VoiceDetectionActivity : AppCompatActivity() {
         return sqrt(meanSquare.toDouble()).toFloat() / 32768.0f
     }
 
-    private fun writeWavFile(pcmData: ByteArray) {
-        audioFile?.let { file ->
-            FileOutputStream(file).use { fos ->
-                val totalAudioLen = pcmData.size
-                val totalDataLen = totalAudioLen + 36
-                val channels = 1
-                val sampleRate = SAMPLE_RATE
-                val bitsPerSample = 16
-                val byteRate = sampleRate * channels * bitsPerSample / 8
+    private fun writeWavFile(pcmData: ByteArray, outputFile: File) {
+        FileOutputStream(outputFile).use { fos ->
+            val totalAudioLen = pcmData.size
+            val totalDataLen = totalAudioLen + 36
+            val channels = 1
+            val sampleRate = SAMPLE_RATE
+            val bitsPerSample = 16
+            val byteRate = sampleRate * channels * bitsPerSample / 8
 
-                val header = ByteBuffer.allocate(44)
-                header.order(ByteOrder.LITTLE_ENDIAN)
-                header.put("RIFF".toByteArray())
-                header.putInt(totalDataLen)
-                header.put("WAVE".toByteArray())
-                header.put("fmt ".toByteArray())
-                header.putInt(16)
-                header.putShort(1.toShort())
-                header.putShort(channels.toShort())
-                header.putInt(sampleRate)
-                header.putInt(byteRate)
-                header.putShort((channels * bitsPerSample / 8).toShort())
-                header.putShort(bitsPerSample.toShort())
-                header.put("data".toByteArray())
-                header.putInt(totalAudioLen)
+            val header = ByteBuffer.allocate(44)
+            header.order(ByteOrder.LITTLE_ENDIAN)
+            header.put("RIFF".toByteArray())
+            header.putInt(totalDataLen)
+            header.put("WAVE".toByteArray())
+            header.put("fmt ".toByteArray())
+            header.putInt(16)
+            header.putShort(1.toShort())
+            header.putShort(channels.toShort())
+            header.putInt(sampleRate)
+            header.putInt(byteRate)
+            header.putShort((channels * bitsPerSample / 8).toShort())
+            header.putShort(bitsPerSample.toShort())
+            header.put("data".toByteArray())
+            header.putInt(totalAudioLen)
 
-                fos.write(header.array())
-                fos.write(pcmData)
+            fos.write(header.array())
+            fos.write(pcmData)
+        }
+    }
+
+    private fun processAudioChunk(audioData: ByteArray) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val chunkFile = File(cacheDir, "voice_chunk_${System.currentTimeMillis()}.wav")
+            try {
+                writeWavFile(audioData, chunkFile)
+                sendAudioToSpeechApi(chunkFile)
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VoiceDetectionActivity, "Chunk processing failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -356,8 +377,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
         val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
-        lifecycleScope.launch {
-            progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val response = speechToSpeechApi.speechToSpeech(
                     language = selectedLanguage,
@@ -371,41 +391,44 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     val responseAudioFile = File(cacheDir, "speech_output_${System.currentTimeMillis()}.mp3")
                     FileOutputStream(responseAudioFile).use { fos -> fos.write(audioBytes) }
 
-                    playAudioResponse(responseAudioFile)
-                    Toast.makeText(this@VoiceDetectionActivity, "Response played", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.Main) {
+                        playAudioResponse(responseAudioFile)
+                        Toast.makeText(this@VoiceDetectionActivity, "Response played", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
-                    Toast.makeText(this@VoiceDetectionActivity, "Empty audio response", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@VoiceDetectionActivity, "Empty audio response", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
-                Log.e("VoiceDetectionActivity", "Speech-to-Speech failed: ${e.message}", e)
-                Toast.makeText(this@VoiceDetectionActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                withContext(Dispatchers.Main) {
+                    Log.e("VoiceDetectionActivity", "Speech-to-Speech failed: ${e.message}", e)
+                    Toast.makeText(this@VoiceDetectionActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             } finally {
-                progressBar.visibility = View.GONE
                 audioFile.delete()
             }
         }
     }
 
     private fun playAudioResponse(audioFile: File) {
-        mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
+        val player = MediaPlayer().apply {
             setDataSource(audioFile.absolutePath)
             prepare()
             start()
             setOnCompletionListener {
                 it.release()
-                mediaPlayer = null
                 audioFile.delete()
             }
             setOnErrorListener { mp, what, extra ->
                 Log.e("VoiceDetectionActivity", "MediaPlayer error: $what, $extra")
                 Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
                 mp.release()
-                mediaPlayer = null
                 audioFile.delete()
                 true
             }
         }
+        // Note: We're not assigning to mediaPlayer to allow multiple responses to play simultaneously
     }
 
     override fun onRequestPermissionsResult(

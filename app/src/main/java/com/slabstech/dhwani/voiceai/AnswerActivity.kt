@@ -101,7 +101,7 @@ class AnswerActivity : AppCompatActivity() {
             }
 
             messageAdapter = MessageAdapter(messageList, { position ->
-                showMessageOptionsDialog(position)
+                ShinMessageOptionsDialog(position)
             }, { message, button ->
                 toggleAudioPlayback(message, button)
             })
@@ -215,7 +215,7 @@ class AnswerActivity : AppCompatActivity() {
         if (currentTheme != isDarkTheme) {
             currentTheme = isDarkTheme
             recreate()
-            return // Avoid further execution during recreate
+            return
         }
 
         sessionDialog = AlertDialog.Builder(this)
@@ -312,7 +312,7 @@ class AnswerActivity : AppCompatActivity() {
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
-    private fun showMessageOptionsDialog(position: Int) {
+    private fun ShinMessageOptionsDialog(position: Int) {
         if (position < 0 || position >= messageList.size) return
 
         val message = messageList[position]
@@ -456,7 +456,7 @@ class AnswerActivity : AppCompatActivity() {
 
     private fun sendAudioToApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: return
-        val language = prefs.getString("language", "kannada") ?: "kannada"
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
@@ -464,7 +464,7 @@ class AnswerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, language, "Bearer $token")
+                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, selectedLanguage, "Bearer $token")
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -497,10 +497,18 @@ class AnswerActivity : AppCompatActivity() {
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
             "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu"
+            "telugu" to "tel_Telu",
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
-        val tgtLang = srcLang
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
+        val tgtLang = srcLang // Response in the same language as input
 
         val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
 
@@ -524,7 +532,8 @@ class AnswerActivity : AppCompatActivity() {
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible ->
                         ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                    }
+                    },
+                    srcLang = tgtLang
                 )
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Chat failed: ${e.message}", e)

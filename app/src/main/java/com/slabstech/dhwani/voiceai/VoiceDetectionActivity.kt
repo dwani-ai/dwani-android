@@ -42,8 +42,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.LinkedList
-import java.util.Queue
 import java.util.concurrent.TimeUnit
 import kotlin.math.sqrt
 
@@ -68,7 +66,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var sessionDialog: AlertDialog? = null
     private var mediaPlayer: MediaPlayer? = null
-    private val audioQueue: Queue<File> = LinkedList() // Queue for sequential playback
+    private var latestAudioFile: File? = null
     private var isPlaying = false
 
     // Hardcoded Retrofit setup
@@ -246,7 +244,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
             return
         }
 
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * 2 // Increase buffer size
+        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * 4 // Increased to 4x
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
@@ -258,18 +256,27 @@ class VoiceDetectionActivity : AppCompatActivity() {
         audioFile = File(cacheDir, "voice_detection_audio.wav")
         val audioBuffer = ByteArray(bufferSize)
         val recordedData = mutableListOf<Byte>()
-        var lastChunkTime = 0L
+        var lastChunkTime = System.currentTimeMillis() // Start with current time
 
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
+        val state = audioRecord?.state
+        if (state != AudioRecord.STATE_INITIALIZED) {
+            Log.e("VoiceDetectionActivity", "AudioRecord not initialized, state: $state")
+            Toast.makeText(this, "Audio recording failed to initialize", Toast.LENGTH_SHORT).show()
+            toggleRecordButton.isChecked = false
+            return
+        }
         audioRecord?.startRecording()
 
         Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
+        Log.d("VoiceDetectionActivity", "Recording started with buffer size: $bufferSize")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 while (isRecording) {
                     val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
+                    Log.d("VoiceDetectionActivity", "Bytes read: $bytesRead, Time: ${System.currentTimeMillis() - recordingStartTime}ms")
                     if (bytesRead > 0) {
                         val energy = calculateEnergy(audioBuffer, bytesRead)
                         withContext(Dispatchers.Main) {
@@ -281,6 +288,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
                         val currentTime = System.currentTimeMillis()
                         if (currentTime - lastChunkTime >= CHUNK_DURATION_MS && recordedData.isNotEmpty()) {
+                            Log.d("VoiceDetectionActivity", "Processing chunk at ${currentTime - recordingStartTime}ms, size: ${recordedData.size}")
                             val chunkData = recordedData.toByteArray()
                             if (hasVoice(chunkData)) {
                                 processAudioChunk(chunkData)
@@ -292,19 +300,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         }
                     } else if (bytesRead < 0) {
                         Log.e("VoiceDetectionActivity", "AudioRecord read error: $bytesRead")
-                    }
-                }
-
-                // Process any remaining audio when recording stops
-                if (recordedData.isNotEmpty()) {
-                    val finalChunkData = recordedData.toByteArray()
-                    if (hasVoice(finalChunkData)) {
-                        processAudioChunk(finalChunkData)
-                    } else {
-                        Log.d("VoiceDetectionActivity", "Final chunk skipped: No voice detected")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@VoiceDetectionActivity, "Recording error: $bytesRead", Toast.LENGTH_SHORT).show()
+                        }
+                        break
                     }
                 }
             } catch (e: Exception) {
+                Log.e("VoiceDetectionActivity", "Recording exception: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@VoiceDetectionActivity, "Recording failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -314,6 +317,18 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 audioRecord = null
                 withContext(Dispatchers.Main) {
                     toggleRecordButton.isChecked = false
+                    Log.d("VoiceDetectionActivity", "Recording stopped")
+                }
+            }
+
+            // Process any remaining audio when recording stops
+            if (recordedData.isNotEmpty()) {
+                Log.d("VoiceDetectionActivity", "Processing final chunk, size: ${recordedData.size}")
+                val finalChunkData = recordedData.toByteArray()
+                if (hasVoice(finalChunkData)) {
+                    processAudioChunk(finalChunkData)
+                } else {
+                    Log.d("VoiceDetectionActivity", "Final chunk skipped: No voice detected")
                 }
             }
         }
@@ -415,8 +430,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     FileOutputStream(responseAudioFile).use { fos -> fos.write(audioBytes) }
 
                     withContext(Dispatchers.Main) {
-                        queueAndPlayAudio(responseAudioFile)
-                        Toast.makeText(this@VoiceDetectionActivity, "Response queued", Toast.LENGTH_SHORT).show()
+                        playLatestAudio(responseAudioFile)
+                        Toast.makeText(this@VoiceDetectionActivity, "Latest response playing", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     withContext(Dispatchers.Main) {
@@ -434,44 +449,46 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
-    private fun queueAndPlayAudio(audioFile: File) {
-        audioQueue.add(audioFile)
-        if (!isPlaying) {
-            playNextAudio()
-        }
-    }
-
-    private fun playNextAudio() {
-        if (audioQueue.isEmpty()) {
-            isPlaying = false
-            return
-        }
-
-        isPlaying = true
-        val audioFile = audioQueue.poll()
+    private fun playLatestAudio(audioFile: File) {
+        // Stop and release any existing MediaPlayer instance
+        mediaPlayer?.stop()
         mediaPlayer?.release()
+
+        // Clean up the previous audio file
+        latestAudioFile?.delete()
+
+        // Reassign the latestAudioFile to the new audio file
+        latestAudioFile = audioFile // This works now because latestAudioFile is a var
+
+        // Set up the MediaPlayer with the new audio file
         mediaPlayer = MediaPlayer().apply {
-            setDataSource(audioFile!!.absolutePath)
+            setDataSource(latestAudioFile!!.absolutePath) // Use the updated file
             prepare()
             start()
+
+            // Clean up after playback completes
             setOnCompletionListener {
                 it.release()
                 mediaPlayer = null
-                audioFile.delete()
-                playNextAudio() // Play the next in queue
+                latestAudioFile?.delete()
+                latestAudioFile = null // Reset to null after playback
+                //isPlaying = false
             }
+
+            // Handle playback errors
             setOnErrorListener { mp, what, extra ->
                 Log.e("VoiceDetectionActivity", "MediaPlayer error: $what, $extra")
                 Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
                 mp.release()
                 mediaPlayer = null
-                audioFile.delete()
-                playNextAudio() // Continue with the next in queue
-                true
+                latestAudioFile?.delete()
+                latestAudioFile = null
+                //isPlaying = false
+                true // Indicate the error was handled
             }
         }
+        isPlaying = true
     }
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -493,7 +510,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         audioRecord?.release()
         audioRecord = null
         audioFile?.delete()
-        audioQueue.forEach { it.delete() }
-        audioQueue.clear()
+        latestAudioFile?.delete()
+        latestAudioFile = null
     }
 }

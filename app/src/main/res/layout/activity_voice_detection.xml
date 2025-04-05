@@ -32,7 +32,7 @@
         android:layout_marginTop="16dp"
         android:layout_marginBottom="16dp"/>
 
-    <!-- Recording indicator (microphone icon) -->
+    <!-- Recording indicator (microphone icon with clock animation) -->
     <ImageView
         android:id="@+id/recordingIndicator"
         android:layout_width="wrap_content"

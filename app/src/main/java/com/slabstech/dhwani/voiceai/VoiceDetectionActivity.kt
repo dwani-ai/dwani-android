@@ -57,12 +57,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private lateinit var recordingIndicator: ImageView
     private lateinit var playbackIndicator: ImageView
     private lateinit var pulseAnimation: Animation
+    private lateinit var clockTickAnimation: Animation // New clock animation
 
     // State variables
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
-    private val isPlaying = false // Assume this is the problematic 'val'
-    private var playbackActive = false // New mutable flag for playback state
+    private var playbackActive = false // Mutable flag for playback state
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
 
@@ -103,6 +103,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         recordingIndicator = findViewById(R.id.recordingIndicator)
         playbackIndicator = findViewById(R.id.playbackIndicator)
         pulseAnimation = AnimationUtils.loadAnimation(this, R.anim.pulse)
+        clockTickAnimation = AnimationUtils.loadAnimation(this, R.anim.clock_tick) // Load clock animation
 
         // Check and request recording permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -155,14 +156,29 @@ class VoiceDetectionActivity : AppCompatActivity() {
             val recordedData = mutableListOf<Byte>()
             var lastChunkTime = System.currentTimeMillis()
 
+            withContext(Dispatchers.Main) {
+                recordingIndicator.visibility = View.VISIBLE
+                recordingIndicator.startAnimation(clockTickAnimation) // Start clock animation
+            }
+
             while (isRecording) {
                 // Pause recording if playback is active
                 if (playbackActive) {
                     audioRecord?.stop() // Temporarily stop recording
+                    withContext(Dispatchers.Main) {
+                        recordingIndicator.clearAnimation() // Stop clock animation during playback
+                        recordingIndicator.visibility = View.INVISIBLE
+                    }
                     while (playbackActive) {
                         Thread.sleep(100) // Wait until playback finishes
                     }
-                    if (isRecording) audioRecord?.startRecording() // Resume if still recording
+                    if (isRecording) {
+                        audioRecord?.startRecording() // Resume if still recording
+                        withContext(Dispatchers.Main) {
+                            recordingIndicator.visibility = View.VISIBLE
+                            recordingIndicator.startAnimation(clockTickAnimation) // Resume clock animation
+                        }
+                    }
                     lastChunkTime = System.currentTimeMillis() // Reset chunk timer
                     recordedData.clear() // Clear buffer to avoid stale data
                     continue
@@ -185,27 +201,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         lastChunkTime = currentTime
                     }
 
-                    // Update UI with audio level and recording indicator
+                    // Update UI with audio level
                     val energy = calculateEnergy(audioBuffer, bytesRead)
                     withContext(Dispatchers.Main) {
                         audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
-                        if (energy > MIN_ENERGY_THRESHOLD) {
-                            if (recordingIndicator.visibility != View.VISIBLE) {
-                                recordingIndicator.visibility = View.VISIBLE
-                                recordingIndicator.startAnimation(pulseAnimation)
-                            }
-                        } else {
-                            recordingIndicator.clearAnimation()
-                            recordingIndicator.visibility = View.INVISIBLE
-                        }
                     }
                 }
-            }
-
-            // Process remaining data when recording stops
-            if (recordedData.isNotEmpty()) {
-                val finalChunk = recordedData.toByteArray()
-                if (hasVoice(finalChunk)) processAudioChunk(finalChunk)
             }
 
             // Cleanup
@@ -225,7 +226,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
-    // Check if audio chunk contains voice based on energy threshold
+    // Check 🙂if audio chunk contains voice based on energy threshold
     private fun hasVoice(audioData: ByteArray): Boolean {
         var maxEnergy = 0f
         val chunkSize = 1024
@@ -309,6 +310,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                recordingIndicator.visibility = View.VISIBLE
+                recordingIndicator.startAnimation(clockTickAnimation) // Show clock during API call
+            }
             try {
                 val response = speechToSpeechApi.speechToSpeech(
                     language = language,
@@ -340,6 +345,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 }
             } finally {
                 audioFile.delete()
+                withContext(Dispatchers.Main) {
+                    recordingIndicator.clearAnimation()
+                    recordingIndicator.visibility = View.INVISIBLE // Hide clock after API call
+                }
             }
         }
     }
@@ -350,7 +359,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         latestAudioFile?.delete()
         latestAudioFile = audioFile
 
-        playbackActive = true // Set new mutable flag
+        playbackActive = true
         mediaPlayer = MediaPlayer().apply {
             setDataSource(audioFile.absolutePath)
             prepare()
@@ -362,7 +371,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 it.release()
                 mediaPlayer = null
                 latestAudioFile?.delete()
-                playbackActive = false // Clear new mutable flag
+                playbackActive = false
                 // Stop playback animation
                 playbackIndicator.clearAnimation()
                 playbackIndicator.visibility = View.INVISIBLE
@@ -373,7 +382,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 mp.release()
                 mediaPlayer = null
                 latestAudioFile?.delete()
-                playbackActive = false // Clear new mutable flag on error
+                playbackActive = false
                 // Stop playback animation
                 playbackIndicator.clearAnimation()
                 playbackIndicator.visibility = View.INVISIBLE

@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center">
+    android:gravity="center"
+    android:background="@color/whatsapp_background"
+    android:padding="16dp">
 
     <!-- Toggle button to start/stop recording -->
     <ToggleButton
@@ -11,16 +14,23 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textOff="Start Recording"
-        android:textOn="Stop Recording" />
+        android:textOn="Stop Recording"
+        android:backgroundTint="@color/whatsapp_green"
+        android:textColor="#FFFFFF"
+        android:padding="8dp"/>
 
     <!-- Progress bar for audio level -->
     <ProgressBar
         android:id="@+id/audioLevelBar"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="8dp"
         android:max="100"
-        android:progress="0" />
+        android:progress="0"
+        android:progressTint="@color/whatsapp_green"
+        android:background="#D0C8B8"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"/>
 
     <!-- Recording indicator (microphone icon) -->
     <ImageView
@@ -28,7 +38,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:src="@drawable/ic_mic"
-        android:visibility="invisible" />
+        android:tint="@color/whatsapp_green"
+        android:visibility="invisible"
+        android:layout_marginBottom="16dp"/>
 
     <!-- Playback indicator (speaker icon) -->
     <ImageView
@@ -36,6 +48,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:src="@drawable/ic_speaker"
-        android:visibility="invisible" />
+        android:tint="@color/whatsapp_green"
+        android:visibility="invisible"/>
 
 </LinearLayout>

@@ -61,6 +61,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
     // State variables
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
+    private val isPlaying = false // Assume this is the problematic 'val'
+    private var playbackActive = false // New mutable flag for playback state
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
 
@@ -154,6 +156,18 @@ class VoiceDetectionActivity : AppCompatActivity() {
             var lastChunkTime = System.currentTimeMillis()
 
             while (isRecording) {
+                // Pause recording if playback is active
+                if (playbackActive) {
+                    audioRecord?.stop() // Temporarily stop recording
+                    while (playbackActive) {
+                        Thread.sleep(100) // Wait until playback finishes
+                    }
+                    if (isRecording) audioRecord?.startRecording() // Resume if still recording
+                    lastChunkTime = System.currentTimeMillis() // Reset chunk timer
+                    recordedData.clear() // Clear buffer to avoid stale data
+                    continue
+                }
+
                 val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                 if (bytesRead > 0) {
                     recordedData.addAll(audioBuffer.take(bytesRead))
@@ -336,6 +350,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         latestAudioFile?.delete()
         latestAudioFile = audioFile
 
+        playbackActive = true // Set new mutable flag
         mediaPlayer = MediaPlayer().apply {
             setDataSource(audioFile.absolutePath)
             prepare()
@@ -347,6 +362,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 it.release()
                 mediaPlayer = null
                 latestAudioFile?.delete()
+                playbackActive = false // Clear new mutable flag
                 // Stop playback animation
                 playbackIndicator.clearAnimation()
                 playbackIndicator.visibility = View.INVISIBLE
@@ -357,6 +373,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 mp.release()
                 mediaPlayer = null
                 latestAudioFile?.delete()
+                playbackActive = false // Clear new mutable flag on error
                 // Stop playback animation
                 playbackIndicator.clearAnimation()
                 playbackIndicator.visibility = View.INVISIBLE

@@ -1,65 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/whatsapp_background">
+    android:orientation="vertical"
+    android:gravity="center">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBarLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/whatsapp_green">
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="Dhwani Voice AI - Voice Detection"
-            app:titleTextColor="#FFFFFF"
-            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <ProgressBar
-        android:id="@+id/audioLevelBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="8dp"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="@color/whatsapp_green"
-        android:background="#D0C8B8"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        android:layout_margin="8dp"/>
-
+    <!-- Toggle button to start/stop recording -->
     <ToggleButton
         android:id="@+id/toggleRecordButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textOn="Stop"
-        android:textOff="Listen"
-        android:textSize="16sp"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="@color/whatsapp_green"
-        android:layout_gravity="center"
-        android:padding="8dp"/>
+        android:textOff="Start Recording"
+        android:textOn="Stop Recording" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNavigation"
+    <!-- Progress bar for audio level -->
+    <ProgressBar
+        android:id="@+id/audioLevelBar"
+        style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="@color/whatsapp_input_background"
-        app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@color/whatsapp_green"
-        app:itemTextColor="@color/whatsapp_green"
-        app:labelVisibilityMode="labeled"/>
+        android:max="100"
+        android:progress="0" />
 
-    <ProgressBar
-        android:id="@+id/progressBar"
+    <!-- Recording indicator (microphone icon) -->
+    <ImageView
+        android:id="@+id/recordingIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:layout_gravity="center"
-        android:indeterminateTint="@color/whatsapp_green"/>
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+        android:src="@drawable/ic_mic"
+        android:visibility="invisible" />
+
+    <!-- Playback indicator (speaker icon) -->
+    <ImageView
+        android:id="@+id/playbackIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@drawable/ic_speaker"
+        android:visibility="invisible" />
+
+</LinearLayout>

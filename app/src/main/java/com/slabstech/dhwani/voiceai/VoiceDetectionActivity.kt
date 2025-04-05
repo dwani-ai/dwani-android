@@ -8,6 +8,11 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
+import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.appcompat.app.AppCompatActivity
@@ -43,12 +48,18 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MIN_ENERGY_THRESHOLD = 0.02f // Threshold for voice detection (adjust as needed)
+    private val MIN_ENERGY_THRESHOLD = 0.02f // Threshold for voice detection
     private val CHUNK_DURATION_MS = 5000L // 5-second chunks
 
-    // UI and state variables
-    private var audioRecord: AudioRecord? = null
+    // UI elements
     private lateinit var toggleRecordButton: ToggleButton
+    private lateinit var audioLevelBar: ProgressBar
+    private lateinit var recordingIndicator: ImageView
+    private lateinit var playbackIndicator: ImageView
+    private lateinit var pulseAnimation: Animation
+
+    // State variables
+    private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
@@ -62,7 +73,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
             .build()
 
         Retrofit.Builder()
-            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/") // Replace with your API base URL
+            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/") // Replace with your API URL
             .client(okHttpClient)
             .build()
             .create(SpeechToSpeechApi::class.java)
@@ -84,7 +95,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_voice_detection)
 
+        // Initialize UI elements
         toggleRecordButton = findViewById(R.id.toggleRecordButton)
+        audioLevelBar = findViewById(R.id.audioLevelBar)
+        recordingIndicator = findViewById(R.id.recordingIndicator)
+        playbackIndicator = findViewById(R.id.playbackIndicator)
+        pulseAnimation = AnimationUtils.loadAnimation(this, R.anim.pulse)
 
         // Check and request recording permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -154,6 +170,21 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         recordedData.clear()
                         lastChunkTime = currentTime
                     }
+
+                    // Update UI with audio level and recording indicator
+                    val energy = calculateEnergy(audioBuffer, bytesRead)
+                    withContext(Dispatchers.Main) {
+                        audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
+                        if (energy > MIN_ENERGY_THRESHOLD) {
+                            if (recordingIndicator.visibility != View.VISIBLE) {
+                                recordingIndicator.visibility = View.VISIBLE
+                                recordingIndicator.startAnimation(pulseAnimation)
+                            }
+                        } else {
+                            recordingIndicator.clearAnimation()
+                            recordingIndicator.visibility = View.INVISIBLE
+                        }
+                    }
                 }
             }
 
@@ -169,6 +200,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
             audioRecord = null
             withContext(Dispatchers.Main) {
                 toggleRecordButton.isChecked = false
+                recordingIndicator.clearAnimation()
+                recordingIndicator.visibility = View.INVISIBLE
             }
         }
     }
@@ -297,7 +330,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
-    // Play the API response audio
+    // Play the API response audio with animation
     private fun playAudio(audioFile: File) {
         mediaPlayer?.release()
         latestAudioFile?.delete()
@@ -307,10 +340,27 @@ class VoiceDetectionActivity : AppCompatActivity() {
             setDataSource(audioFile.absolutePath)
             prepare()
             start()
+            // Start playback animation
+            playbackIndicator.visibility = View.VISIBLE
+            playbackIndicator.startAnimation(pulseAnimation)
             setOnCompletionListener {
                 it.release()
                 mediaPlayer = null
                 latestAudioFile?.delete()
+                // Stop playback animation
+                playbackIndicator.clearAnimation()
+                playbackIndicator.visibility = View.INVISIBLE
+            }
+            setOnErrorListener { mp, what, extra ->
+                Log.e("VoiceDetection", "MediaPlayer error: $what, $extra")
+                Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
+                mp.release()
+                mediaPlayer = null
+                latestAudioFile?.delete()
+                // Stop playback animation
+                playbackIndicator.clearAnimation()
+                playbackIndicator.visibility = View.INVISIBLE
+                true
             }
         }
     }
@@ -320,5 +370,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         audioRecord?.release()
         mediaPlayer?.release()
         latestAudioFile?.delete()
+        recordingIndicator.clearAnimation()
+        playbackIndicator.clearAnimation()
     }
 }

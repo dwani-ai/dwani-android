@@ -54,7 +54,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MIN_ENERGY_THRESHOLD = 0.02f // Threshold for voice detection
+    private val MIN_ENERGY_THRESHOLD = 0.04f // Threshold for voice detection
     private val CHUNK_DURATION_MS = 5000L // 5-second chunks
 
     // UI elements

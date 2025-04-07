@@ -2,6 +2,7 @@
 <resources>
     <string-array name="language_names">
         <item>Kannada</item>
+        <!--
         <item>Hindi</item>
         <item>Tamil</item>
         <item>Malayalam</item>
@@ -15,8 +16,10 @@
         <item>Portuguese</item>
         <item>Russian</item>
         <item>Polish</item>
+        -->
     </string-array>
     <string-array name="language_values">
+        <!--
         <item>kannada</item>
         <item>hindi</item>
         <item>tamil</item>
@@ -31,6 +34,7 @@
         <item>portuguese</item>
         <item>russian</item>
         <item>polish</item>
+        -->
     </string-array>
     <string-array name="tts_voice_options">
         <item>Kannada Female</item>
@@ -47,6 +51,7 @@
         <item>Tamil</item>
         <item>Malayalam</item>
         <item>Telugu</item>
+        <!--
         <item>German</item>
         <item>French</item>
         <item>Dutch</item>
@@ -55,6 +60,7 @@
         <item>Portuguese</item>
         <item>Russian</item>
         <item>Polish</item>
+        -->
     </string-array>
     <string-array name="target_language_codes">
         <item>eng_Latn</item>
@@ -63,6 +69,7 @@
         <item>tam_Taml</item>
         <item>mal_Mlym</item>
         <item>tel_Telu</item>
+        <!--
         <item>deu_Latn</item>
         <item>fra_Latn</item>
         <item>nld_Latn</item>
@@ -71,5 +78,6 @@
         <item>por_Latn</item>
         <item>rus_Cyrl</item>
         <item>pol_Latn</item>
+        -->
     </string-array>
 </resources>

@@ -56,7 +56,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MIN_ENERGY_THRESHOLD = 0.04f
-    private val PAUSE_DURATION_MS = 2000L
+    private val PAUSE_DURATION_MS = 1000L
 
     private lateinit var toggleRecordButton: ToggleButton
     private lateinit var audioLevelBar: ProgressBar

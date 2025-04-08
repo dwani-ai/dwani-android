@@ -1,54 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:background="@color/whatsapp_background"
-    android:padding="16dp">
+    android:background="@color/whatsapp_background">
 
-    <!-- Toggle button to start/stop recording -->
-    <ToggleButton
-        android:id="@+id/toggleRecordButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textOff="Start Recording"
-        android:textOn="Stop Recording"
-        android:backgroundTint="@color/whatsapp_green"
-        android:textColor="#FFFFFF"
-        android:padding="8dp"/>
-
-    <!-- Progress bar for audio level -->
-    <ProgressBar
-        android:id="@+id/audioLevelBar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="8dp"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="@color/whatsapp_green"
-        android:background="#D0C8B8"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp"/>
-
-    <!-- Recording indicator (microphone icon) -->
-    <ImageView
-        android:id="@+id/recordingIndicator"
-        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:src="@drawable/ic_mic"
-        android:tint="@color/whatsapp_green"
-        android:visibility="invisible"
-        android:layout_marginBottom="16dp"/>
+        android:background="@color/whatsapp_green">
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="Voice AI "
+            app:titleTextColor="#FFFFFF"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+    </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Playback indicator (speaker icon) -->
-    <ImageView
-        android:id="@+id/playbackIndicator"
-        android:layout_width="wrap_content"
+    <!-- Main Content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="16dp"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <!-- Toggle button to start/stop recording -->
+        <ToggleButton
+            android:id="@+id/toggleRecordButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOff="Start Recording"
+            android:textOn="Stop Recording"
+            android:backgroundTint="@color/whatsapp_green"
+            android:textColor="#FFFFFF"
+            android:padding="8dp"/>
+
+        <!-- Progress bar for audio level -->
+        <ProgressBar
+            android:id="@+id/audioLevelBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="@color/whatsapp_green"
+            android:background="#D0C8B8"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Recording indicator (microphone icon with clock animation) -->
+        <ImageView
+            android:id="@+id/recordingIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_mic"
+            android:tint="@color/whatsapp_green"
+            android:visibility="invisible"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Playback indicator (speaker icon) -->
+        <ImageView
+            android:id="@+id/playbackIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_speaker"
+            android:tint="@color/whatsapp_green"
+            android:visibility="invisible"/>
+
+    </LinearLayout>
+
+    <!-- Bottom Navigation -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:src="@drawable/ic_speaker"
-        android:tint="@color/whatsapp_green"
-        android:visibility="invisible"/>
+        android:layout_gravity="bottom"
+        android:background="@color/whatsapp_input_background"
+        app:menu="@menu/bottom_nav_menu"
+        app:itemIconTint="@color/whatsapp_green"
+        app:itemTextColor="@color/whatsapp_green"
+        app:labelVisibilityMode="labeled"/>
 
-</LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

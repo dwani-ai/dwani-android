@@ -1,5 +1,8 @@
 package com.slabstech.dhwani.voiceai
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -44,8 +47,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.util.concurrent.TimeUnit
-import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
 
@@ -54,8 +57,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val MIN_ENERGY_THRESHOLD = 0.04f // Threshold for voice detection
-    private val CHUNK_DURATION_MS = 5000L // 5-second chunks
+    private val PAUSE_THRESHOLD_MS = 1000L // 1-second pause
+    private val VAD_THRESHOLD = 0.5f // Silero VAD probability threshold
 
     // UI elements
     private lateinit var toggleRecordButton: ToggleButton
@@ -74,6 +77,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
 
+    // Silero VAD setup
+    private lateinit var ortEnvironment: OrtEnvironment
+    private lateinit var ortSession: OrtSession
+
     // Retrofit API setup
     private val speechToSpeechApi: SpeechToSpeechApi by lazy {
         val okHttpClient = OkHttpClient.Builder()
@@ -89,7 +96,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
             .create(SpeechToSpeechApi::class.java)
     }
 
-    // API interface definition
     interface SpeechToSpeechApi {
         @Multipart
         @POST("v1/speech_to_speech")
@@ -118,6 +124,13 @@ class VoiceDetectionActivity : AppCompatActivity() {
         // Set up the Toolbar
         setSupportActionBar(toolbar)
 
+        // Initialize Silero VAD
+        ortEnvironment = OrtEnvironment.getEnvironment()
+        ortSession = ortEnvironment.createSession(
+            assets.open("silero_vad.onnx").readBytes(), // Place model in assets folder
+            OrtSession.SessionOptions()
+        )
+
         // Check and request recording permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -127,7 +140,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
             )
         }
 
-        // Toggle button listener to start/stop recording
+        // Toggle button listener
         toggleRecordButton.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) startRecording() else stopRecording()
         }
@@ -168,7 +181,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 else -> false
             }
         }
-        bottomNavigation.selectedItemId = R.id.nav_voice // Default selection
+        bottomNavigation.selectedItemId = R.id.nav_voice
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -221,7 +234,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val audioBuffer = ByteArray(bufferSize)
             val recordedData = mutableListOf<Byte>()
-            var lastChunkTime = System.currentTimeMillis()
+            var lastVoiceTime = System.currentTimeMillis()
 
             withContext(Dispatchers.Main) {
                 recordingIndicator.visibility = View.VISIBLE
@@ -245,33 +258,36 @@ class VoiceDetectionActivity : AppCompatActivity() {
                             recordingIndicator.startAnimation(clockTickAnimation)
                         }
                     }
-                    lastChunkTime = System.currentTimeMillis()
+                    lastVoiceTime = System.currentTimeMillis()
                     recordedData.clear()
                     continue
                 }
 
                 val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                 if (bytesRead > 0) {
-                    recordedData.addAll(audioBuffer.take(bytesRead))
                     val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastChunkTime >= CHUNK_DURATION_MS) {
-                        Log.d("VoiceDetection", "Processing 5-sec chunk, size: ${recordedData.size}")
-                        val chunkData = recordedData.toByteArray()
-                        if (hasVoice(chunkData)) {
-                            Log.d("VoiceDetection", "Voice detected, sending chunk")
-                            processAudioChunk(chunkData)
-                        } else {
-                            Log.d("VoiceDetection", "No voice detected, skipping chunk")
-                        }
+                    val hasVoice = detectVoiceWithSilero(audioBuffer, bytesRead)
+
+                    if (hasVoice) {
+                        recordedData.addAll(audioBuffer.take(bytesRead))
+                        lastVoiceTime = currentTime
+                    } else if (recordedData.isNotEmpty() &&
+                        (currentTime - lastVoiceTime) >= PAUSE_THRESHOLD_MS) {
+                        val audioChunk = recordedData.toByteArray()
+                        Log.d("VoiceDetection", "Pause detected, processing chunk of size: ${audioChunk.size}")
+                        processAudioChunk(audioChunk)
                         recordedData.clear()
-                        lastChunkTime = currentTime
+                        lastVoiceTime = currentTime
                     }
 
-                    val energy = calculateEnergy(audioBuffer, bytesRead)
                     withContext(Dispatchers.Main) {
-                        audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
+                        audioLevelBar.progress = if (hasVoice) 75 else 25
                     }
                 }
+            }
+
+            if (recordedData.isNotEmpty()) {
+                processAudioChunk(recordedData.toByteArray())
             }
 
             audioRecord?.stop()
@@ -290,28 +306,27 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
-    private fun hasVoice(audioData: ByteArray): Boolean {
-        var maxEnergy = 0f
-        val chunkSize = 1024
-        for (i in 0 until audioData.size step chunkSize) {
-            val end = minOf(i + chunkSize, audioData.size)
-            val chunk = audioData.copyOfRange(i, end)
-            val energy = calculateEnergy(chunk, chunk.size)
-            maxEnergy = maxOf(maxEnergy, energy)
-            if (maxEnergy > MIN_ENERGY_THRESHOLD) return true
+    private fun detectVoiceWithSilero(audioData: ByteArray, bytesRead: Int): Boolean {
+        val floatArray = FloatArray(bytesRead / 2)
+        for (i in floatArray.indices) {
+            val sample = (audioData[i * 2].toInt() and 0xFF) or (audioData[i * 2 + 1].toInt() shl 8)
+            floatArray[i] = sample / 32768.0f
         }
-        Log.d("VoiceDetection", "Max energy: $maxEnergy (threshold: $MIN_ENERGY_THRESHOLD)")
-        return false
-    }
 
-    private fun calculateEnergy(buffer: ByteArray, bytesRead: Int): Float {
-        var sum = 0L
-        for (i in 0 until bytesRead step 2) {
-            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
-            sum += sample * sample
-        }
-        val meanSquare = sum / (bytesRead / 2)
-        return sqrt(meanSquare.toDouble()).toFloat() / 32768.0f
+        if (floatArray.size < 1536) return false
+
+        val inputTensor = OnnxTensor.createTensor(
+            ortEnvironment,
+            FloatBuffer.wrap(floatArray.take(1536).toFloatArray()),
+            longArrayOf(1, 1536)
+        )
+
+        val outputs = ortSession.run(mapOf("input" to inputTensor))
+        val prob = outputs[0].value as Array<FloatArray>
+        val voiceProb = prob[0][0]
+
+        Log.d("VoiceDetection", "Voice probability: $voiceProb")
+        return voiceProb > VAD_THRESHOLD
     }
 
     private fun writeWavFile(pcmData: ByteArray, outputFile: File) {
@@ -361,7 +376,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
     private fun sendAudioToApi(audioFile: File) {
         val token = "YOUR_AUTH_TOKEN" // Replace with actual token retrieval logic
-        val language = "kannada" // Adjust based on app settings
+        val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
         val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
@@ -451,6 +466,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
         audioRecord?.release()
         mediaPlayer?.release()
         latestAudioFile?.delete()
+        ortSession.close()
+        ortEnvironment.close()
         recordingIndicator.clearAnimation()
         playbackIndicator.clearAnimation()
     }

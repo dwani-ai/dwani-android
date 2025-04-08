@@ -1,8 +1,5 @@
 package com.slabstech.dhwani.voiceai
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -29,8 +26,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -47,20 +46,18 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.FloatBuffer
 import java.util.concurrent.TimeUnit
+import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
 
-    // Constants for audio configuration
     private val RECORD_AUDIO_PERMISSION_CODE = 101
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val PAUSE_THRESHOLD_MS = 1000L // 1-second pause
-    private val VAD_THRESHOLD = 0.5f // Silero VAD probability threshold
+    private val MIN_ENERGY_THRESHOLD = 0.04f
+    private val PAUSE_DURATION_MS = 2000L
 
-    // UI elements
     private lateinit var toggleRecordButton: ToggleButton
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var recordingIndicator: ImageView
@@ -70,23 +67,17 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private lateinit var pulseAnimation: Animation
     private lateinit var clockTickAnimation: Animation
 
-    // State variables
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var playbackActive = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
 
-    // Silero VAD setup
-    private lateinit var ortEnvironment: OrtEnvironment
-    private lateinit var ortSession: OrtSession
-
-    // Retrofit API setup
     private val speechToSpeechApi: SpeechToSpeechApi by lazy {
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .build()
 
         Retrofit.Builder()
@@ -111,7 +102,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_voice_detection)
 
-        // Initialize UI elements
         toggleRecordButton = findViewById(R.id.toggleRecordButton)
         audioLevelBar = findViewById(R.id.audioLevelBar)
         recordingIndicator = findViewById(R.id.recordingIndicator)
@@ -121,17 +111,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
         pulseAnimation = AnimationUtils.loadAnimation(this, R.anim.pulse)
         clockTickAnimation = AnimationUtils.loadAnimation(this, R.anim.clock_tick)
 
-        // Set up the Toolbar
         setSupportActionBar(toolbar)
 
-        // Initialize Silero VAD
-        ortEnvironment = OrtEnvironment.getEnvironment()
-        ortSession = ortEnvironment.createSession(
-            assets.open("silero_vad.onnx").readBytes(), // Place model in assets folder
-            OrtSession.SessionOptions()
-        )
-
-        // Check and request recording permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
@@ -140,12 +121,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
             )
         }
 
-        // Toggle button listener
         toggleRecordButton.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) startRecording() else stopRecording()
         }
 
-        // Bottom Navigation listener
         bottomNavigation.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_answer -> {
@@ -182,6 +161,17 @@ class VoiceDetectionActivity : AppCompatActivity() {
             }
         }
         bottomNavigation.selectedItemId = R.id.nav_voice
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == RECORD_AUDIO_PERMISSION_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission granted
+            } else {
+                Toast.makeText(this, "Audio permission is required", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -235,6 +225,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
             val audioBuffer = ByteArray(bufferSize)
             val recordedData = mutableListOf<Byte>()
             var lastVoiceTime = System.currentTimeMillis()
+            var hasVoiceData = false
 
             withContext(Dispatchers.Main) {
                 recordingIndicator.visibility = View.VISIBLE
@@ -258,36 +249,36 @@ class VoiceDetectionActivity : AppCompatActivity() {
                             recordingIndicator.startAnimation(clockTickAnimation)
                         }
                     }
-                    lastVoiceTime = System.currentTimeMillis()
                     recordedData.clear()
+                    lastVoiceTime = System.currentTimeMillis()
+                    hasVoiceData = false
                     continue
                 }
 
                 val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                 if (bytesRead > 0) {
+                    val energy = calculateEnergy(audioBuffer, bytesRead)
                     val currentTime = System.currentTimeMillis()
-                    val hasVoice = detectVoiceWithSilero(audioBuffer, bytesRead)
-
-                    if (hasVoice) {
-                        recordedData.addAll(audioBuffer.take(bytesRead))
-                        lastVoiceTime = currentTime
-                    } else if (recordedData.isNotEmpty() &&
-                        (currentTime - lastVoiceTime) >= PAUSE_THRESHOLD_MS) {
-                        val audioChunk = recordedData.toByteArray()
-                        Log.d("VoiceDetection", "Pause detected, processing chunk of size: ${audioChunk.size}")
-                        processAudioChunk(audioChunk)
-                        recordedData.clear()
-                        lastVoiceTime = currentTime
-                    }
 
                     withContext(Dispatchers.Main) {
-                        audioLevelBar.progress = if (hasVoice) 75 else 25
+                        audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
+                    }
+
+                    if (energy > MIN_ENERGY_THRESHOLD) {
+                        recordedData.addAll(audioBuffer.take(bytesRead))
+                        lastVoiceTime = currentTime
+                        hasVoiceData = true
+                    } else if (hasVoiceData && (currentTime - lastVoiceTime) >= PAUSE_DURATION_MS) {
+                        Log.d("VoiceDetection", "2-second pause detected, processing audio, size: ${recordedData.size}")
+                        val audioData = recordedData.toByteArray()
+                        processAudioChunk(audioData)
+                        recordedData.clear()
+                        hasVoiceData = false
+                        lastVoiceTime = currentTime
+                    } else if (energy <= MIN_ENERGY_THRESHOLD && recordedData.isNotEmpty()) {
+                        recordedData.addAll(audioBuffer.take(bytesRead))
                     }
                 }
-            }
-
-            if (recordedData.isNotEmpty()) {
-                processAudioChunk(recordedData.toByteArray())
             }
 
             audioRecord?.stop()
@@ -306,27 +297,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
-    private fun detectVoiceWithSilero(audioData: ByteArray, bytesRead: Int): Boolean {
-        val floatArray = FloatArray(bytesRead / 2)
-        for (i in floatArray.indices) {
-            val sample = (audioData[i * 2].toInt() and 0xFF) or (audioData[i * 2 + 1].toInt() shl 8)
-            floatArray[i] = sample / 32768.0f
+    private fun calculateEnergy(buffer: ByteArray, bytesRead: Int): Float {
+        var sum = 0L
+        for (i in 0 until bytesRead step 2) {
+            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+            sum += sample * sample
         }
-
-        if (floatArray.size < 1536) return false
-
-        val inputTensor = OnnxTensor.createTensor(
-            ortEnvironment,
-            FloatBuffer.wrap(floatArray.take(1536).toFloatArray()),
-            longArrayOf(1, 1536)
-        )
-
-        val outputs = ortSession.run(mapOf("input" to inputTensor))
-        val prob = outputs[0].value as Array<FloatArray>
-        val voiceProb = prob[0][0]
-
-        Log.d("VoiceDetection", "Voice probability: $voiceProb")
-        return voiceProb > VAD_THRESHOLD
+        val meanSquare = sum / (bytesRead / 2)
+        return sqrt(meanSquare.toDouble()).toFloat() / 32768.0f
     }
 
     private fun writeWavFile(pcmData: ByteArray, outputFile: File) {
@@ -389,12 +367,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 recordingIndicator.startAnimation(clockTickAnimation)
             }
             try {
-                val response = speechToSpeechApi.speechToSpeech(
-                    language = language,
-                    file = filePart,
-                    voice = voicePart,
-                    token = "Bearer $token"
-                )
+                val response = withTimeout(1000000L) {
+                    speechToSpeechApi.speechToSpeech(
+                        language = language,
+                        file = filePart,
+                        voice = voicePart,
+                        token = "Bearer $token"
+                    )
+                }
 
                 if (response.isSuccessful) {
                     val audioBytes = response.body()?.bytes()
@@ -412,6 +392,11 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         Toast.makeText(this@VoiceDetectionActivity, "API error: ${response.code()}", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } catch (e: TimeoutCancellationException) {
+                Log.e("VoiceDetection", "API call timed out: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VoiceDetectionActivity, "Network timeout", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
                 Log.e("VoiceDetection", "API call failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
@@ -428,46 +413,67 @@ class VoiceDetectionActivity : AppCompatActivity() {
     }
 
     private fun playAudio(audioFile: File) {
-        mediaPlayer?.release()
-        latestAudioFile?.delete()
+        mediaPlayer?.let {
+            if (it.isPlaying) {
+                it.stop()
+            }
+            it.reset()
+        } ?: run {
+            mediaPlayer = MediaPlayer()
+        }
+
+        latestAudioFile?.takeIf { it.exists() }?.delete()
         latestAudioFile = audioFile
 
-        playbackActive = true
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(audioFile.absolutePath)
-            prepare()
-            start()
-            playbackIndicator.visibility = View.VISIBLE
-            playbackIndicator.startAnimation(pulseAnimation)
-            setOnCompletionListener {
-                it.release()
-                mediaPlayer = null
-                latestAudioFile?.delete()
-                playbackActive = false
-                playbackIndicator.clearAnimation()
-                playbackIndicator.visibility = View.INVISIBLE
+        try {
+            mediaPlayer?.apply {
+                setDataSource(audioFile.absolutePath)
+                prepare()
+                start()
+                playbackActive = true
+
+                runOnUiThread {
+                    playbackIndicator.visibility = View.VISIBLE
+                    playbackIndicator.startAnimation(pulseAnimation)
+                }
+
+                setOnCompletionListener {
+                    cleanupMediaPlayer()
+                }
+                setOnErrorListener { mp, what, extra ->
+                    Log.e("VoiceDetection", "MediaPlayer error: $what, $extra")
+                    runOnUiThread {
+                        Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
+                    }
+                    cleanupMediaPlayer()
+                    true
+                }
             }
-            setOnErrorListener { mp, what, extra ->
-                Log.e("VoiceDetection", "MediaPlayer error: $what, $extra")
-                Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
-                mp.release()
-                mediaPlayer = null
-                latestAudioFile?.delete()
-                playbackActive = false
-                playbackIndicator.clearAnimation()
-                playbackIndicator.visibility = View.INVISIBLE
-                true
+        } catch (e: Exception) {
+            Log.e("VoiceDetection", "Playback failed: ${e.message}", e)
+            cleanupMediaPlayer()
+            runOnUiThread {
+                Toast.makeText(this@VoiceDetectionActivity, "Playback failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun cleanupMediaPlayer() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        latestAudioFile?.takeIf { it.exists() }?.delete()
+        playbackActive = false
+        runOnUiThread {
+            playbackIndicator.clearAnimation()
+            playbackIndicator.visibility = View.INVISIBLE
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         audioRecord?.release()
-        mediaPlayer?.release()
-        latestAudioFile?.delete()
-        ortSession.close()
-        ortEnvironment.close()
+        audioRecord = null
+        cleanupMediaPlayer()
         recordingIndicator.clearAnimation()
         playbackIndicator.clearAnimation()
     }

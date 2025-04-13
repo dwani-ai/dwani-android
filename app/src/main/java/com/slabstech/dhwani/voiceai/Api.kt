@@ -116,7 +116,7 @@ object RetrofitClient {
 
     fun apiService(context: Context): ApiService {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val baseUrl = prefs.getString("base_url", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
+        val baseUrl = prefs.getString("api_endpoint", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(getOkHttpClient(context))

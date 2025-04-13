@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -24,6 +25,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -39,6 +41,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
@@ -49,6 +54,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MIN_ENERGY_THRESHOLD = 0.04f
     private val PAUSE_DURATION_MS = 1000L
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     private lateinit var toggleRecordButton: ToggleButton
     private lateinit var audioLevelBar: ProgressBar
@@ -65,6 +72,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
     private var sessionDialog: AlertDialog? = null
+    private lateinit var sessionKey: ByteArray
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +88,16 @@ class VoiceDetectionActivity : AppCompatActivity() {
         clockTickAnimation = AnimationUtils.loadAnimation(this, R.anim.clock_tick)
 
         setSupportActionBar(toolbar)
+
+        // Retrieve session key
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
+            ?: run {
+                Log.e("VoiceDetection", "Session key missing")
+                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+                AuthManager.logout(this)
+                ByteArray(0)
+            }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -350,6 +368,16 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
+    private fun encryptAudio(audio: ByteArray): ByteArray {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(audio)
+        return nonce + ciphertext
+    }
+
     private fun sendAudioToApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: run {
             runOnUiThread {
@@ -360,8 +388,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
-        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        // Encrypt audio file
+        val audioBytes = audioFile.readBytes()
+        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
+        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
+
+        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
         val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch {
@@ -375,7 +409,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
                         language = language,
                         file = filePart,
                         voice = voicePart,
-                        token = "Bearer $token"
+                        token = "Bearer $token",
+                        sessionKey = Base64.encodeToString(sessionKey, Base64.DEFAULT)
                     )
                 }
 
@@ -423,6 +458,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 }
             } finally {
                 audioFile.delete()
+                encryptedFile.delete()
                 withContext(Dispatchers.Main) {
                     recordingIndicator.clearAnimation()
                     recordingIndicator.visibility = View.INVISIBLE

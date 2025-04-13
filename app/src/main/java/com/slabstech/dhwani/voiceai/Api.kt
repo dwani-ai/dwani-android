@@ -1,6 +1,7 @@
 package com.slabstech.dhwani.voiceai
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.runBlocking
@@ -14,6 +15,10 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 
 data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val username: String, val password: String)
@@ -28,17 +33,24 @@ data class VisualQueryResponse(val answer: String)
 
 interface ApiService {
     @POST("v1/token")
-    suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
+    suspend fun login(
+        @Body loginRequest: LoginRequest,
+        @Header("X-Session-Key") sessionKey: String
+    ): TokenResponse
 
     @POST("v1/app/register")
-    suspend fun appRegister(@Body registerRequest: RegisterRequest): TokenResponse
+    suspend fun appRegister(
+        @Body registerRequest: RegisterRequest,
+        @Header("X-Session-Key") sessionKey: String
+    ): TokenResponse
 
     @Multipart
     @POST("v1/transcribe/")
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
         @Query("language") language: String,
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String
     ): TranscriptionResponse
 
     @POST("v1/chat")
@@ -70,7 +82,8 @@ interface ApiService {
         @Part("query") query: RequestBody,
         @Query("src_lang") srcLang: String,
         @Query("tgt_lang") tgtLang: String,
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String
     ): VisualQueryResponse
 
     @Multipart
@@ -79,7 +92,8 @@ interface ApiService {
         @Query("language") language: String,
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String
     ): Response<ResponseBody>
 
     @POST("v1/refresh")
@@ -88,6 +102,18 @@ interface ApiService {
 
 object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
+    private const val GCM_TAG_LENGTH = 16
+    private const val GCM_NONCE_LENGTH = 12
+
+    private fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(audio)
+        return nonce + ciphertext
+    }
 
     private fun getOkHttpClient(context: Context): OkHttpClient {
         val authenticator = object : okhttp3.Authenticator {

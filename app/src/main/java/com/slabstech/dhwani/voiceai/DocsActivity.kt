@@ -8,8 +8,11 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Base64
+import android.util.Log
 import android.view.View
 import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -20,8 +23,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.launch
-import android.util.Log
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
@@ -29,8 +30,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -39,7 +41,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
-import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class DocsActivity : AppCompatActivity() {
 
@@ -53,6 +57,9 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private lateinit var sessionKey: ByteArray
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     private val pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileUpload(it) }
@@ -65,6 +72,15 @@ class DocsActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
+
+        // Retrieve session key
+        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
+            ?: run {
+                Log.e("DocsActivity", "Session key missing")
+                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+                AuthManager.logout(this)
+                ByteArray(0)
+            }
 
         checkAuthentication()
 
@@ -250,6 +266,16 @@ class DocsActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
+    private fun encryptFile(file: ByteArray): ByteArray {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(file)
+        return nonce + ciphertext
+    }
+
     private fun handleFileUpload(uri: Uri) {
         val fileName = getFileName(uri)
         val inputStream = contentResolver.openInputStream(uri)
@@ -282,6 +308,12 @@ class DocsActivity : AppCompatActivity() {
             }
         }
 
+        // Encrypt file
+        val fileBytes = file.readBytes()
+        val encryptedFileBytes = encryptFile(fileBytes)
+        val encryptedFile = File(cacheDir, "encrypted_$fileName")
+        FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
+
         val defaultQuery = "Describe the image"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         val message = Message(defaultQuery, timestamp, true, uri)
@@ -289,7 +321,7 @@ class DocsActivity : AppCompatActivity() {
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
-        getVisualQueryResponse(defaultQuery, file)
+        getVisualQueryResponse(defaultQuery, encryptedFile)
     }
 
     private fun compressImage(inputFile: File): File {
@@ -376,8 +408,8 @@ class DocsActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
-        val tgtLang = srcLang // Response in the same language as input
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val tgtLang = srcLang
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
@@ -385,7 +417,14 @@ class DocsActivity : AppCompatActivity() {
                 val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryBody = query.toRequestBody("text/plain".toMediaType())
-                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(filePart, queryBody, srcLang, tgtLang, "Bearer $token")
+                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
+                    filePart,
+                    queryBody,
+                    srcLang,
+                    tgtLang,
+                    "Bearer $token",
+                    Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                )
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Answer: $answerText", timestamp, false)

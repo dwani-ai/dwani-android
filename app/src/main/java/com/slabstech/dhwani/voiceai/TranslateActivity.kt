@@ -11,6 +11,8 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Base64
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.*
@@ -29,7 +31,6 @@ import android.view.MenuItem
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.text.Editable
-import android.util.Log
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
@@ -41,6 +42,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class TranslateActivity : AppCompatActivity() {
 
@@ -69,6 +73,9 @@ class TranslateActivity : AppCompatActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private lateinit var sessionKey: ByteArray
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -77,6 +84,15 @@ class TranslateActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translate)
+
+        // Retrieve session key
+        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
+            ?: run {
+                Log.e("TranslateActivity", "Session key missing")
+                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+                AuthManager.logout(this)
+                ByteArray(0)
+            }
 
         checkAuthentication()
 
@@ -355,6 +371,16 @@ class TranslateActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
+    private fun encryptAudio(audio: ByteArray): ByteArray {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(audio)
+        return nonce + ciphertext
+    }
+
     private fun startRecording() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
@@ -462,13 +488,24 @@ class TranslateActivity : AppCompatActivity() {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
-        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        // Encrypt audio file
+        val audioBytes = audioFile.readBytes()
+        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
+        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
+
+        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(filePart, selectedLanguage, "Bearer $token")
+                val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
+                    filePart,
+                    selectedLanguage,
+                    "Bearer $token",
+                    Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                )
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -488,6 +525,7 @@ class TranslateActivity : AppCompatActivity() {
             } finally {
                 progressBar.visibility = View.GONE
                 audioFile.delete()
+                encryptedFile.delete()
             }
         }
     }
@@ -523,7 +561,7 @@ class TranslateActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
@@ -611,5 +649,8 @@ class TranslateActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }
+        audioRecord?.release()
+        audioRecord = null
+        audioFile?.delete()
     }
 }

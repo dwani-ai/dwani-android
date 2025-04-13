@@ -11,6 +11,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -41,6 +42,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class AnswerActivity : AppCompatActivity() {
 
@@ -69,6 +73,9 @@ class AnswerActivity : AppCompatActivity() {
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var sessionDialog: AlertDialog? = null
+    private lateinit var sessionKey: ByteArray
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -77,6 +84,15 @@ class AnswerActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_answer)
+
+        // Retrieve session key
+        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
+            ?: run {
+                Log.e("AnswerActivity", "Session key missing")
+                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+                AuthManager.logout(this)
+                ByteArray(0)
+            }
 
         checkAuthentication()
 
@@ -101,7 +117,7 @@ class AnswerActivity : AppCompatActivity() {
             }
 
             messageAdapter = MessageAdapter(messageList, { position ->
-                ShinMessageOptionsDialog(position)
+                showMessageOptionsDialog(position)
             }, { message, button ->
                 toggleAudioPlayback(message, button)
             })
@@ -312,9 +328,8 @@ class AnswerActivity : AppCompatActivity() {
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
-    private fun ShinMessageOptionsDialog(position: Int) {
+    private fun showMessageOptionsDialog(position: Int) {
         if (position < 0 || position >= messageList.size) return
-
         val message = messageList[position]
         val options = arrayOf("Delete", "Share", "Copy")
         AlertDialog.Builder(this)
@@ -349,6 +364,16 @@ class AnswerActivity : AppCompatActivity() {
         val clip = ClipData.newPlainText("Message", copyText)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun encryptAudio(audio: ByteArray): ByteArray {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(audio)
+        return nonce + ciphertext
     }
 
     private fun startRecording() {
@@ -458,13 +483,24 @@ class AnswerActivity : AppCompatActivity() {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
-        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        // Encrypt audio file
+        val audioBytes = audioFile.readBytes()
+        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
+        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
+
+        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, selectedLanguage, "Bearer $token")
+                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(
+                    filePart,
+                    selectedLanguage,
+                    "Bearer $token",
+                    Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                )
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -484,6 +520,7 @@ class AnswerActivity : AppCompatActivity() {
             } finally {
                 progressBar.visibility = View.GONE
                 audioFile.delete()
+                encryptedFile.delete()
             }
         }
     }
@@ -507,8 +544,8 @@ class AnswerActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
-        val tgtLang = srcLang // Response in the same language as input
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val tgtLang = srcLang
 
         val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
 

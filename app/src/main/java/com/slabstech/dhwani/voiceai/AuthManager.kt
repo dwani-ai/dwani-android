@@ -12,6 +12,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 
 object AuthManager {
     private const val TOKEN_KEY = "access_token"
@@ -20,6 +24,8 @@ object AuthManager {
     private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer
     private const val MAX_RETRIES = 3
     private const val TAG = "AuthManager"
+    private const val GCM_TAG_LENGTH = 16
+    private const val GCM_NONCE_LENGTH = 12
 
     private fun getSecurePrefs(context: Context): SharedPreferences {
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
@@ -32,13 +38,29 @@ object AuthManager {
         )
     }
 
-    suspend fun login(context: Context, email: String, deviceToken: String): Boolean = withContext(Dispatchers.IO) {
+    private fun encryptData(data: String, key: ByteArray): String {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(key, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(data.toByteArray(StandardCharsets.UTF_8))
+        val combined = nonce + ciphertext
+        return Base64.encodeToString(combined, Base64.DEFAULT)
+    }
+
+    suspend fun login(context: Context, email: String, deviceToken: String, sessionKey: ByteArray): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Attempting login for email: $email")
-            val response = RetrofitClient.apiService(context).login(LoginRequest(email, deviceToken))
+            Log.d(TAG, "Attempting login for email")
+            val encryptedEmail = encryptData(email, sessionKey)
+            val encryptedToken = encryptData(deviceToken, sessionKey)
+            val response = RetrofitClient.apiService(context).login(
+                LoginRequest(encryptedEmail, encryptedToken),
+                Base64.encodeToString(sessionKey, Base64.DEFAULT)
+            )
             val token = response.access_token
             val refreshToken = response.refresh_token
-            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
             saveTokens(context, token, refreshToken, expiryTime)
             Log.d(TAG, "Login successful, expiry: $expiryTime")
             true
@@ -48,13 +70,18 @@ object AuthManager {
         }
     }
 
-    suspend fun appRegister(context: Context, email: String, deviceToken: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun appRegister(context: Context, email: String, deviceToken: String, sessionKey: ByteArray): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Attempting app registration for email: $email")
-            val response = RetrofitClient.apiService(context).appRegister(RegisterRequest(email, deviceToken))
+            Log.d(TAG, "Attempting app registration for email")
+            val encryptedEmail = encryptData(email, sessionKey)
+            val encryptedToken = encryptData(deviceToken, sessionKey)
+            val response = RetrofitClient.apiService(context).appRegister(
+                RegisterRequest(encryptedEmail, encryptedToken),
+                Base64.encodeToString(sessionKey, Base64.DEFAULT)
+            )
             val token = response.access_token
             val refreshToken = response.refresh_token
-            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
             saveTokens(context, token, refreshToken, expiryTime)
             Log.d(TAG, "App registration successful, expiry: $expiryTime")
             true
@@ -68,14 +95,11 @@ object AuthManager {
         val prefs = getSecurePrefs(context)
         val currentToken = prefs.getString(TOKEN_KEY, null)
         val refreshToken = prefs.getString(REFRESH_TOKEN_KEY, null)
-
         Log.d(TAG, "Checking token state - Token exists: ${currentToken != null}, RefreshToken exists: ${refreshToken != null}")
-
         if (currentToken == null || refreshToken == null) {
             Log.d(TAG, "No tokens available, refresh not possible")
             return@withContext false
         }
-
         if (isTokenExpired(context)) {
             Log.d(TAG, "Token expired, attempting refresh")
             var attempts = 0
@@ -92,7 +116,7 @@ object AuthManager {
                     Log.e(TAG, "Token refresh attempt ${attempts + 1} failed: ${e.message}", e)
                     attempts++
                     if (attempts < MAX_RETRIES) {
-                        delay(1000L * attempts) // Exponential backoff
+                        delay(1000L * attempts)
                     }
                 }
             }

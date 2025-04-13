@@ -2,6 +2,7 @@ package com.slabstech.dhwani.voiceai
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.widget.Button
 import android.widget.EditText
@@ -10,12 +11,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
+import java.security.SecureRandom
 import java.util.UUID
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class LoginActivity : AppCompatActivity() {
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private val TAG = "LoginActivity"
     private val DEVICE_TOKEN_KEY = "device_token"
+    private val SESSION_KEY = "session_key"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -36,6 +42,14 @@ class LoginActivity : AppCompatActivity() {
             Log.d(TAG, "Generated new device token")
         } else {
             Log.d(TAG, "Using existing device token")
+        }
+
+        // Generate or retrieve session key
+        var sessionKey = prefs.getString(SESSION_KEY, null)?.let { Base64.decode(it, Base64.DEFAULT) }
+        if (sessionKey == null) {
+            sessionKey = ByteArray(16).apply { SecureRandom().nextBytes(this) }
+            prefs.edit().putString(SESSION_KEY, Base64.encodeToString(sessionKey, Base64.DEFAULT)).apply()
+            Log.d(TAG, "Generated new session key")
         }
 
         val fromLogout = intent.getBooleanExtra("from_logout", false)
@@ -69,24 +83,24 @@ class LoginActivity : AppCompatActivity() {
             } else if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
                 Toast.makeText(this, "Please enter a valid email", Toast.LENGTH_SHORT).show()
             } else {
-                loginOrRegister(email, deviceToken!!)
+                loginOrRegister(email, deviceToken!!, sessionKey!!)
             }
         }
     }
 
-    private fun loginOrRegister(email: String, deviceToken: String) {
+    private fun loginOrRegister(email: String, deviceToken: String, sessionKey: ByteArray) {
         lifecycleScope.launch {
             Log.d(TAG, "Attempting login with email: $email")
             try {
-                if (AuthManager.login(this@LoginActivity, email, deviceToken)) {
+                if (AuthManager.login(this@LoginActivity, email, deviceToken, sessionKey)) {
                     Log.d(TAG, "Login successful")
                     Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
                     proceedToVoiceDetectionActivity()
                 } else {
                     Log.d(TAG, "Login failed, attempting app registration")
-                    if (appRegister(email, deviceToken)) {
+                    if (AuthManager.appRegister(this@LoginActivity, email, deviceToken, sessionKey)) {
                         Log.d(TAG, "App registration successful, retrying login")
-                        if (AuthManager.login(this@LoginActivity, email, deviceToken)) {
+                        if (AuthManager.login(this@LoginActivity, email, deviceToken, sessionKey)) {
                             Toast.makeText(this@LoginActivity, "Account created and logged in", Toast.LENGTH_SHORT).show()
                             proceedToVoiceDetectionActivity()
                         } else {
@@ -102,22 +116,6 @@ class LoginActivity : AppCompatActivity() {
                 Log.e(TAG, "Authentication error: ${e.message}", e)
                 Toast.makeText(this@LoginActivity, "Connection error: Unable to reach server.", Toast.LENGTH_LONG).show()
             }
-        }
-    }
-
-    private suspend fun appRegister(email: String, deviceToken: String): Boolean {
-        try {
-            val apiService = RetrofitClient.apiService(this)
-            val registerRequest = RegisterRequest(username = email, password = deviceToken)
-            val response = apiService.appRegister(registerRequest)
-            // Use default expiry if getTokenExpiration returns null
-            val expiryTime = AuthManager.getTokenExpiration(response.access_token)
-                ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
-            AuthManager.saveTokens(this, response.access_token, response.refresh_token, expiryTime)
-            return true
-        } catch (e: Exception) {
-            Log.e(TAG, "App registration failed: ${e.message}", e)
-            return false
         }
     }
 

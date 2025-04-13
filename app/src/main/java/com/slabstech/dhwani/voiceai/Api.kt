@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
@@ -75,7 +76,7 @@ interface ApiService {
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
         @Header("Authorization") token: String
-    ): ResponseBody
+    ): Response<ResponseBody>
 
     @POST("v1/refresh")
     suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse

@@ -8,21 +8,18 @@
         android:entryValues="@array/language_values"
         android:summary="Select the transcription language"/>
 
-
     <PreferenceCategory android:title="Text-to-Speech Settings">
         <SwitchPreferenceCompat
             android:key="tts_enabled"
             android:title="Enable TTS"
             android:defaultValue="false"
             android:summary="Turn text-to-speech on or off"/>
-
         <SwitchPreferenceCompat
             android:key="auto_play_tts"
             android:title="Auto-Play TTS"
             android:defaultValue="true"
             android:summary="Automatically play TTS audio when enabled"
             android:dependency="tts_enabled"/>
-
     </PreferenceCategory>
 
     <PreferenceCategory android:title="API Endpoint">

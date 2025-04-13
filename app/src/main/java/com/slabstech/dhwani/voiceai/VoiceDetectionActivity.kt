@@ -32,21 +32,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import retrofit2.Retrofit
-import retrofit2.http.Header
-import retrofit2.http.Multipart
-import retrofit2.http.POST
-import retrofit2.http.Part
-import retrofit2.http.Query
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.TimeUnit
 import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
@@ -72,31 +63,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private var playbackActive = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
-
-    private val speechToSpeechApi: SpeechToSpeechApi by lazy {
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
-
-        Retrofit.Builder()
-            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/")
-            .client(okHttpClient)
-            .build()
-            .create(SpeechToSpeechApi::class.java)
-    }
-
-    interface SpeechToSpeechApi {
-        @Multipart
-        @POST("v1/speech_to_speech")
-        suspend fun speechToSpeech(
-            @Query("language") language: String,
-            @Part file: MultipartBody.Part,
-            @Part("voice") voice: RequestBody,
-            @Header("Authorization") token: String
-        ): retrofit2.Response<okhttp3.ResponseBody>
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -353,7 +319,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = "YOUR_AUTH_TOKEN" // Replace with actual token retrieval logic
+        val token = AuthManager.getToken(this) ?: run {
+            runOnUiThread {
+                Toast.makeText(this, "Authentication required", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
@@ -361,14 +332,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
         val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
             withContext(Dispatchers.Main) {
                 recordingIndicator.visibility = View.VISIBLE
                 recordingIndicator.startAnimation(clockTickAnimation)
             }
             try {
                 val response = withTimeout(1000000L) {
-                    speechToSpeechApi.speechToSpeech(
+                    RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = language,
                         file = filePart,
                         voice = voicePart,
@@ -389,18 +360,18 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 } else {
                     Log.e("VoiceDetection", "API error: ${response.code()} - ${response.errorBody()?.string()}")
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@VoiceDetectionActivity, "API error: ${response.code()}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VoiceDetectionActivity, "Speech-to-speech error: ${response.code()}", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.e("VoiceDetection", "API call timed out: ${e.message}")
+                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@VoiceDetectionActivity, "Network timeout", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e("VoiceDetection", "API call failed: ${e.message}", e)
+                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@VoiceDetectionActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceDetectionActivity, "Speech-to-speech error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 audioFile.delete()

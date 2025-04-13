@@ -34,12 +34,6 @@
             android:inputType="textUri"
             android:summary="Set the URL for the API"/>
 
-        <EditTextPreference
-            android:key="chat_api_key"
-            android:title="Dhwani API Key"
-            android:defaultValue="dhwani-version-api-server-0-0-1"
-            android:inputType="textPassword"
-            android:summary="Enter your secure API key for Dhwani"/>
     </PreferenceCategory>
 
     <SwitchPreferenceCompat

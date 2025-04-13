@@ -16,6 +16,7 @@ import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
 data class LoginRequest(val username: String, val password: String)
+data class RegisterRequest(val username: String, val password: String)
 data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
 data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
@@ -28,6 +29,9 @@ data class VisualQueryResponse(val answer: String)
 interface ApiService {
     @POST("v1/token")
     suspend fun login(@Body loginRequest: LoginRequest): TokenResponse
+
+    @POST("v1/app/register")
+    suspend fun appRegister(@Body registerRequest: RegisterRequest): TokenResponse
 
     @Multipart
     @POST("v1/transcribe/")

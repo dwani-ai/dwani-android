@@ -32,10 +32,10 @@ object AuthManager {
         )
     }
 
-    suspend fun login(context: Context, email: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun login(context: Context, email: String, deviceToken: String): Boolean = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Attempting login for email: $email")
-            val response = RetrofitClient.apiService(context).login(LoginRequest(email, email))
+            val response = RetrofitClient.apiService(context).login(LoginRequest(email, deviceToken))
             val token = response.access_token
             val refreshToken = response.refresh_token
             val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
@@ -48,12 +48,28 @@ object AuthManager {
         }
     }
 
+    suspend fun appRegister(context: Context, email: String, deviceToken: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Attempting app registration for email: $email")
+            val response = RetrofitClient.apiService(context).appRegister(RegisterRequest(email, deviceToken))
+            val token = response.access_token
+            val refreshToken = response.refresh_token
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000) // 24 hours
+            saveTokens(context, token, refreshToken, expiryTime)
+            Log.d(TAG, "App registration successful, expiry: $expiryTime")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "App registration failed: ${e.message}", e)
+            false
+        }
+    }
+
     suspend fun refreshTokenIfNeeded(context: Context): Boolean = withContext(Dispatchers.IO) {
         val prefs = getSecurePrefs(context)
         val currentToken = prefs.getString(TOKEN_KEY, null)
         val refreshToken = prefs.getString(REFRESH_TOKEN_KEY, null)
 
-        Log.d(TAG, "Checking token state - Token: $currentToken, RefreshToken: $refreshToken")
+        Log.d(TAG, "Checking token state - Token exists: ${currentToken != null}, RefreshToken exists: ${refreshToken != null}")
 
         if (currentToken == null || refreshToken == null) {
             Log.d(TAG, "No tokens available, refresh not possible")
@@ -125,7 +141,7 @@ object AuthManager {
     }
 
     internal fun saveTokens(context: Context, token: String, refreshToken: String, expiryTime: Long) {
-        Log.d(TAG, "Saving tokens - Token: $token, RefreshToken: $refreshToken, Expiry: $expiryTime")
+        Log.d(TAG, "Saving tokens - Expiry: $expiryTime")
         getSecurePrefs(context).edit()
             .putString(TOKEN_KEY, token)
             .putString(REFRESH_TOKEN_KEY, refreshToken)

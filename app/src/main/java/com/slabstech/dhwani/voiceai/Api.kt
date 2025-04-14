@@ -29,6 +29,7 @@ data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: S
 data class ChatResponse(val response: String)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String) // Sentences will be encrypted
 data class TranslationResponse(val translations: List<String>)
+data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String) // All fields encrypted
 data class VisualQueryResponse(val answer: String)
 
 interface ApiService {
@@ -57,7 +58,7 @@ interface ApiService {
     suspend fun chat(
         @Body chatRequest: ChatRequest, // Prompt encrypted
         @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String // Added for decryption
+        @Header("X-Session-Key") sessionKey: String
     ): ChatResponse
 
     @POST("v1/audio/speech")
@@ -68,23 +69,21 @@ interface ApiService {
         @Query("response_format") responseFormat: String,
         @Query("speed") speed: Double,
         @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String // Added for decryption
+        @Header("X-Session-Key") sessionKey: String
     ): ResponseBody
 
     @POST("v1/translate")
     suspend fun translate(
         @Body translationRequest: TranslationRequest, // Sentences encrypted
         @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String // Added for decryption
+        @Header("X-Session-Key") sessionKey: String
     ): TranslationResponse
 
     @Multipart
     @POST("v1/visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
-        @Part("query") query: RequestBody, // Encrypted query
-        @Query("src_lang") srcLang: String,
-        @Query("tgt_lang") tgtLang: String,
+        @Part("data") data: RequestBody, // JSON body with query, src_lang, tgt_lang
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): VisualQueryResponse

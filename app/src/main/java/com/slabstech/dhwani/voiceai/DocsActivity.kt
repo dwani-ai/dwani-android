@@ -26,6 +26,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
+import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
@@ -412,21 +413,30 @@ class DocsActivity : AppCompatActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
-        // Encrypt query
+        // Encrypt query and language fields
         val encryptedQuery = RetrofitClient.encryptText(query, sessionKey)
+        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
+        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
+
+        // Create JSON body
+        val visualQueryRequest = VisualQueryRequest(
+            query = encryptedQuery,
+            src_lang = encryptedSrcLang,
+            tgt_lang = encryptedTgtLang
+        )
+        val jsonBody = Gson().toJson(visualQueryRequest)
+        Log.d("DocsActivity", "Sending visual query JSON: $jsonBody")
+        val dataBody = jsonBody.toRequestBody("application/json".toMediaType())
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
                 val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                val queryBody = encryptedQuery.toRequestBody("text/plain".toMediaType())
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,
-                    queryBody,
-                    srcLang,
-                    tgtLang,
+                    dataBody,
                     "Bearer $token",
                     cleanSessionKey
                 )

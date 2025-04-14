@@ -417,6 +417,7 @@ class DocsActivity : AppCompatActivity() {
         val encryptedQuery = RetrofitClient.encryptText(query, sessionKey)
         val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
         val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
+        Log.d("DocsActivity", "Encrypted fields - query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
 
         // Create JSON body
         val visualQueryRequest = VisualQueryRequest(
@@ -433,6 +434,7 @@ class DocsActivity : AppCompatActivity() {
             try {
                 val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                Log.d("DocsActivity", "File part - name: ${file.name}, size: ${file.length()}")
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,

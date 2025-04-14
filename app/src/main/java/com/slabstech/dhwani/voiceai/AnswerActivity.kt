@@ -493,15 +493,38 @@ class AnswerActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        // Map to supported languages to match server validation
+        val supportedLanguage = when (selectedLanguage.lowercase()) {
+            "hindi" -> "hindi"
+            "tamil" -> "tamil"
+            else -> "kannada" // Default to kannada
+        }
 
         // Encrypt audio file
         val audioBytes = audioFile.readBytes()
-        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedAudio = try {
+            encryptAudio(audioBytes)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Audio encryption failed: ${e.message}")
+            runOnUiThread {
+                Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
         // Encrypt language
-        val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage, sessionKey)
+        val encryptedLanguage = try {
+            RetrofitClient.encryptText(supportedLanguage, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Language encryption failed: ${e.message}")
+            runOnUiThread {
+                Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        Log.d("AnswerActivity", "Transcribe request - file: ${encryptedFile.name}, language: $encryptedLanguage")
 
         val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
@@ -527,8 +550,11 @@ class AnswerActivity : AppCompatActivity() {
                     scrollToLatestMessage()
                     getChatResponse(voiceQueryText)
                 } else {
-                    Toast.makeText(this@AnswerActivity, "Voice Query empty", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AnswerActivity, "Voice query empty", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("AnswerActivity", "Transcription failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(this@AnswerActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Transcription failed: ${e.message}", e)
                 Toast.makeText(this@AnswerActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -562,9 +588,31 @@ class AnswerActivity : AppCompatActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
-        // Encrypt prompt
-        val encryptedPrompt = RetrofitClient.encryptText(prompt, sessionKey)
-        val chatRequest = ChatRequest(encryptedPrompt, srcLang, tgtLang)
+        // Encrypt all fields
+        val encryptedPrompt = try {
+            RetrofitClient.encryptText(prompt, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Prompt encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val encryptedSrcLang = try {
+            RetrofitClient.encryptText(srcLang, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Source language encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val encryptedTgtLang = try {
+            RetrofitClient.encryptText(tgtLang, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Target language encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Log.d("AnswerActivity", "Chat request - prompt: $encryptedPrompt, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
+
+        val chatRequest = ChatRequest(encryptedPrompt, encryptedSrcLang, encryptedTgtLang)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
@@ -584,20 +632,30 @@ class AnswerActivity : AppCompatActivity() {
                 scrollToLatestMessage()
 
                 // Encrypt text for TTS
-                val encryptedAnswerText = RetrofitClient.encryptText(answerText, sessionKey)
-                SpeechUtils.textToSpeech(
-                    context = this@AnswerActivity,
-                    scope = lifecycleScope,
-                    text = encryptedAnswerText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible ->
-                        ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                    },
-                    srcLang = tgtLang,
-                    sessionKey = sessionKey
-                )
+                val encryptedAnswerText = try {
+                    RetrofitClient.encryptText(answerText, sessionKey)
+                } catch (e: Exception) {
+                    Log.e("AnswerActivity", "TTS text encryption failed: ${e.message}")
+                    ""
+                }
+                if (encryptedAnswerText.isNotEmpty()) {
+                    SpeechUtils.textToSpeech(
+                        context = this@AnswerActivity,
+                        scope = lifecycleScope,
+                        text = encryptedAnswerText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible ->
+                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                        },
+                        srcLang = tgtLang,
+                        sessionKey = sessionKey
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("AnswerActivity", "Chat failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Chat failed: ${e.message}", e)
                 Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()

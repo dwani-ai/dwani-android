@@ -59,49 +59,14 @@ object SpeechUtils {
             return
         }
 
-        // Determine the model and voice based on source language
-        val (model, voice) = when {
-            srcLang != null && europeanLanguages.contains(srcLang) -> {
-                Pair(
-                    "parler-tts/parler-tts-mini-multilingual-v1.1",
-                    "Daniel's voice is monotone yet slightly fast in delivery, with a very close recording that almost has no background noise."
-                )
-            }
-            srcLang != null && indianLanguages.contains(srcLang) -> {
-                Pair(
-                    "ai4bharat/indic-parler-tts",
-                    prefs.getString(
-                        "tts_voice",
-                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                )
-            }
-            else -> {
-                // Default to Indian model
-                Pair(
-                    "ai4bharat/indic-parler-tts",
-                    prefs.getString(
-                        "tts_voice",
-                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                )
-            }
-        }
-
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
 
         scope.launch {
             ttsProgressBarVisibility(true)
             try {
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
-                // Encrypt voice description
-                val encryptedVoice = RetrofitClient.encryptText(voice, sessionKey)
                 val response = RetrofitClient.apiService(context).textToSpeech(
                     input = text, // Already encrypted
-                    voice = encryptedVoice,
-                    model = model,
-                    responseFormat = "mp3",
-                    speed = 1.0,
                     token = "Bearer $token",
                     sessionKey = cleanSessionKey
                 )
@@ -132,6 +97,9 @@ object SpeechUtils {
                 } else {
                     Toast.makeText(context, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("SpeechUtils", "TTS failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("SpeechUtils", "TTS failed: ${e.message}", e)
                 Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()

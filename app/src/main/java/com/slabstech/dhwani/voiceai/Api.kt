@@ -64,10 +64,6 @@ interface ApiService {
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
         @Query("input") input: String, // Encrypted input
-        @Query("voice") voice: String,
-        @Query("model") model: String,
-        @Query("response_format") responseFormat: String,
-        @Query("speed") speed: Double,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): ResponseBody

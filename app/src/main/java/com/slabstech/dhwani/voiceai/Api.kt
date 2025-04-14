@@ -23,11 +23,11 @@ import java.security.SecureRandom
 data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val username: String, val password: String)
 data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
-data class TranscriptionRequest(val language: String)
+data class TranscriptionRequest(val language: String) // Language will be encrypted
 data class TranscriptionResponse(val text: String)
-data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
+data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String) // Prompt will be encrypted
 data class ChatResponse(val response: String)
-data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
+data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String) // Sentences will be encrypted
 data class TranslationResponse(val translations: List<String>)
 data class VisualQueryResponse(val answer: String)
 
@@ -48,38 +48,41 @@ interface ApiService {
     @POST("v1/transcribe/")
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
-        @Query("language") language: String,
+        @Query("language") language: String, // Encrypted language
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): TranscriptionResponse
 
     @POST("v1/chat")
     suspend fun chat(
-        @Body chatRequest: ChatRequest,
-        @Header("Authorization") token: String
+        @Body chatRequest: ChatRequest, // Prompt encrypted
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String // Added for decryption
     ): ChatResponse
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
-        @Query("input") input: String,
+        @Query("input") input: String, // Encrypted input
         @Query("voice") voice: String,
         @Query("model") model: String,
         @Query("response_format") responseFormat: String,
         @Query("speed") speed: Double,
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String // Added for decryption
     ): ResponseBody
 
     @POST("v1/translate")
     suspend fun translate(
-        @Body translationRequest: TranslationRequest,
-        @Header("Authorization") token: String
+        @Body translationRequest: TranslationRequest, // Sentences encrypted
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String // Added for decryption
     ): TranslationResponse
 
     @Multipart
     @POST("v1/visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
-        @Part("query") query: RequestBody,
+        @Part("query") query: RequestBody, // Encrypted query
         @Query("src_lang") srcLang: String,
         @Query("tgt_lang") tgtLang: String,
         @Header("Authorization") token: String,
@@ -89,7 +92,7 @@ interface ApiService {
     @Multipart
     @POST("v1/speech_to_speech")
     suspend fun speechToSpeech(
-        @Query("language") language: String,
+        @Query("language") language: String, // Encrypted language
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
         @Header("Authorization") token: String,
@@ -105,7 +108,7 @@ object RetrofitClient {
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
 
-    private fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
+    fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
         val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val keySpec = SecretKeySpec(sessionKey, "AES")
@@ -113,6 +116,17 @@ object RetrofitClient {
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
         val ciphertext = cipher.doFinal(audio)
         return nonce + ciphertext
+    }
+
+    fun encryptText(text: String, sessionKey: ByteArray): String {
+        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val keySpec = SecretKeySpec(sessionKey, "AES")
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
+        val combined = nonce + ciphertext
+        return Base64.encodeToString(combined, Base64.NO_WRAP)
     }
 
     private fun getOkHttpClient(context: Context): OkHttpClient {

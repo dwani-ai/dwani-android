@@ -42,9 +42,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 class TranslateActivity : AppCompatActivity() {
 
@@ -85,14 +82,24 @@ class TranslateActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translate)
 
-        // Retrieve session key
-        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
-            ?: run {
-                Log.e("TranslateActivity", "Session key missing")
-                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-                AuthManager.logout(this)
-                ByteArray(0)
+        // Retrieve session key with validation
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("TranslateActivity", "Invalid session key format: ${e.message}")
+                null
             }
+        } ?: run {
+            Log.e("TranslateActivity", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         checkAuthentication()
 
@@ -372,13 +379,7 @@ class TranslateActivity : AppCompatActivity() {
     }
 
     private fun encryptAudio(audio: ByteArray): ByteArray {
-        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val keySpec = SecretKeySpec(sessionKey, "AES")
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
-        val ciphertext = cipher.doFinal(audio)
-        return nonce + ciphertext
+        return RetrofitClient.encryptAudio(audio, sessionKey)
     }
 
     private fun startRecording() {
@@ -494,17 +495,21 @@ class TranslateActivity : AppCompatActivity() {
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
+        // Encrypt language
+        val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage, sessionKey)
+
         val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
                     filePart,
-                    selectedLanguage,
+                    encryptedLanguage,
                     "Bearer $token",
-                    Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                    cleanSessionKey
                 )
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -524,7 +529,7 @@ class TranslateActivity : AppCompatActivity() {
                 Toast.makeText(this@TranslateActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
-                audioFile.delete()
+                audioFile?.delete()
                 encryptedFile.delete()
             }
         }
@@ -587,12 +592,20 @@ class TranslateActivity : AppCompatActivity() {
             sentences.add(currentSentence.joinToString(" "))
         }
 
-        val translationRequest = TranslationRequest(sentences, srcLang, tgtLang)
+        // Encrypt sentences
+        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it, sessionKey) }
+
+        val translationRequest = TranslationRequest(encryptedSentences, srcLang, tgtLang)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@TranslateActivity).translate(translationRequest, "Bearer $token")
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                val response = RetrofitClient.apiService(this@TranslateActivity).translate(
+                    translationRequest,
+                    "Bearer $token",
+                    cleanSessionKey
+                )
                 val translatedText = response.translations.joinToString("\n")
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Translation: $translatedText", timestamp, false)
@@ -600,15 +613,19 @@ class TranslateActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+
+                // Encrypt text for TTS
+                val encryptedTranslatedText = RetrofitClient.encryptText(translatedText, sessionKey)
                 SpeechUtils.textToSpeech(
                     context = this@TranslateActivity,
                     scope = lifecycleScope,
-                    text = translatedText,
+                    text = encryptedTranslatedText,
                     message = message,
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang
+                    srcLang = tgtLang,
+                    sessionKey = sessionKey
                 )
             } catch (e: Exception) {
                 Log.e("TranslateActivity", "Translation failed: ${e.message}", e)
@@ -630,6 +647,10 @@ class TranslateActivity : AppCompatActivity() {
             playIconResId = android.R.drawable.ic_media_play,
             stopIconResId = R.drawable.ic_media_stop
         )
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRequestPermissionsResult(

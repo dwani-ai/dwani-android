@@ -379,13 +379,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
     }
 
     private fun encryptAudio(audio: ByteArray): ByteArray {
-        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val keySpec = SecretKeySpec(sessionKey, "AES")
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
-        val ciphertext = cipher.doFinal(audio)
-        return nonce + ciphertext
+        return RetrofitClient.encryptAudio(audio, sessionKey)
     }
 
     private fun sendAudioToApi(audioFile: File) {
@@ -404,9 +398,13 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
+        // Encrypt language and voice description
+        val encryptedLanguage = RetrofitClient.encryptText(language, sessionKey)
+        val encryptedVoice = RetrofitClient.encryptText(voiceDescription, sessionKey)
+
         val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
-        val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
+        val voicePart = encryptedVoice.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch {
             withContext(Dispatchers.Main) {
@@ -416,9 +414,9 @@ class VoiceDetectionActivity : AppCompatActivity() {
             try {
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 Log.d("VoiceDetection", "Sending API request with session key: $cleanSessionKey")
-                val response = withTimeout(1000000L) {
+                val response = withTimeout(30000L) { // Reduced timeout for better UX
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
-                        language = language,
+                        language = encryptedLanguage,
                         file = filePart,
                         voice = voicePart,
                         token = "Bearer $token",
@@ -446,7 +444,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     Log.e("VoiceDetection", "API error: ${response.code()} - $errorBody")
                     withContext(Dispatchers.Main) {
                         when (response.code()) {
-                            401 -> Toast.makeText(this@VoiceDetectionActivity, "Authentication failed. Please log in again.", Toast.LENGTH_SHORT).show()
+                            401 -> {
+                                Toast.makeText(this@VoiceDetectionActivity, "Authentication failed. Please log in again.", Toast.LENGTH_SHORT).show()
+                                AuthManager.logout(this@VoiceDetectionActivity)
+                            }
                             400 -> Toast.makeText(this@VoiceDetectionActivity, "Invalid audio input. Please try again.", Toast.LENGTH_SHORT).show()
                             in 500..599 -> Toast.makeText(this@VoiceDetectionActivity, "Server error. Please try again later.", Toast.LENGTH_SHORT).show()
                             else -> Toast.makeText(this@VoiceDetectionActivity, "Speech-to-speech failed: Error ${response.code()}", Toast.LENGTH_SHORT).show()

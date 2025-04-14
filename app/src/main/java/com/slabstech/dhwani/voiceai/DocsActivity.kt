@@ -41,9 +41,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 class DocsActivity : AppCompatActivity() {
 
@@ -73,14 +70,24 @@ class DocsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
 
-        // Retrieve session key
-        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
-            ?: run {
-                Log.e("DocsActivity", "Session key missing")
-                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-                AuthManager.logout(this)
-                ByteArray(0)
+        // Retrieve session key with validation
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("DocsActivity", "Invalid session key format: ${e.message}")
+                null
             }
+        } ?: run {
+            Log.e("DocsActivity", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         checkAuthentication()
 
@@ -267,13 +274,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun encryptFile(file: ByteArray): ByteArray {
-        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val keySpec = SecretKeySpec(sessionKey, "AES")
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
-        val ciphertext = cipher.doFinal(file)
-        return nonce + ciphertext
+        return RetrofitClient.encryptAudio(file, sessionKey) // Reusing audio encryption for files
     }
 
     private fun handleFileUpload(uri: Uri) {
@@ -411,19 +412,23 @@ class DocsActivity : AppCompatActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
+        // Encrypt query
+        val encryptedQuery = RetrofitClient.encryptText(query, sessionKey)
+
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
                 val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                val queryBody = query.toRequestBody("text/plain".toMediaType())
+                val queryBody = encryptedQuery.toRequestBody("text/plain".toMediaType())
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,
                     queryBody,
                     srcLang,
                     tgtLang,
                     "Bearer $token",
-                    Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                    cleanSessionKey
                 )
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -432,15 +437,19 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+
+                // Encrypt text for TTS
+                val encryptedAnswerText = RetrofitClient.encryptText(answerText, sessionKey)
                 SpeechUtils.textToSpeech(
                     context = this@DocsActivity,
                     scope = lifecycleScope,
-                    text = answerText,
+                    text = encryptedAnswerText,
                     message = message,
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang
+                    srcLang = tgtLang,
+                    sessionKey = sessionKey
                 )
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Visual query failed: ${e.message}", e)
@@ -450,6 +459,10 @@ class DocsActivity : AppCompatActivity() {
                 file.delete()
             }
         }
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRequestPermissionsResult(

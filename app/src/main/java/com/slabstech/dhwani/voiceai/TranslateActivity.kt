@@ -569,6 +569,7 @@ class TranslateActivity : AppCompatActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
+        // Split input into sentences
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
         val sentences = mutableListOf<String>()
         var currentSentence = mutableListOf<String>()
@@ -592,10 +593,14 @@ class TranslateActivity : AppCompatActivity() {
             sentences.add(currentSentence.joinToString(" "))
         }
 
-        // Encrypt sentences
-        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it, sessionKey) }
+        // Encrypt sentences and language codes
+        val encryptedSentences = sentences.map { sentence ->
+            RetrofitClient.encryptText(sentence, sessionKey)
+        }
+        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
+        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
 
-        val translationRequest = TranslationRequest(encryptedSentences, srcLang, tgtLang)
+        val translationRequest = TranslationRequest(encryptedSentences, encryptedSrcLang, encryptedTgtLang)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
@@ -614,19 +619,21 @@ class TranslateActivity : AppCompatActivity() {
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
 
-                // Encrypt text for TTS
-                val encryptedTranslatedText = RetrofitClient.encryptText(translatedText, sessionKey)
-                SpeechUtils.textToSpeech(
-                    context = this@TranslateActivity,
-                    scope = lifecycleScope,
-                    text = encryptedTranslatedText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang,
-                    sessionKey = sessionKey
-                )
+                // Encrypt translated text for TTS if enabled
+                if (prefs.getBoolean("tts_enabled", false)) {
+                    val encryptedTranslatedText = RetrofitClient.encryptText(translatedText, sessionKey)
+                    SpeechUtils.textToSpeech(
+                        context = this@TranslateActivity,
+                        scope = lifecycleScope,
+                        text = encryptedTranslatedText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
+                        srcLang = tgtLang,
+                        sessionKey = sessionKey
+                    )
+                }
             } catch (e: Exception) {
                 Log.e("TranslateActivity", "Translation failed: ${e.message}", e)
                 Toast.makeText(this@TranslateActivity, "Translation error: ${e.message}", Toast.LENGTH_LONG).show()

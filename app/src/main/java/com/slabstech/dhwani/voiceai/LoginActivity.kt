@@ -45,11 +45,25 @@ class LoginActivity : AppCompatActivity() {
         }
 
         // Generate or retrieve session key
-        var sessionKey = prefs.getString(SESSION_KEY, null)?.let { Base64.decode(it, Base64.DEFAULT) }
+        var sessionKey = prefs.getString(SESSION_KEY, null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e(TAG, "Invalid session key format: ${e.message}")
+                null
+            }
+        }
         if (sessionKey == null) {
             sessionKey = ByteArray(16).apply { SecureRandom().nextBytes(this) }
-            prefs.edit().putString(SESSION_KEY, Base64.encodeToString(sessionKey, Base64.DEFAULT)).apply()
-            Log.d(TAG, "Generated new session key")
+            val encodedKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+            prefs.edit().putString(SESSION_KEY, encodedKey).apply()
+            Log.d(TAG, "Generated new session key: $encodedKey")
+        } else {
+            Log.d(TAG, "Using existing session key")
         }
 
         val fromLogout = intent.getBooleanExtra("from_logout", false)
@@ -123,6 +137,10 @@ class LoginActivity : AppCompatActivity() {
         Log.d(TAG, "Proceeding to VoiceDetectionActivity")
         startActivity(Intent(this@LoginActivity, VoiceDetectionActivity::class.java))
         finish()
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRestart() {

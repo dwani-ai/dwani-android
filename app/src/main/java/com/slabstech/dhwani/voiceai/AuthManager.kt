@@ -46,7 +46,7 @@ object AuthManager {
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
         val ciphertext = cipher.doFinal(data.toByteArray(StandardCharsets.UTF_8))
         val combined = nonce + ciphertext
-        return Base64.encodeToString(combined, Base64.DEFAULT)
+        return Base64.encodeToString(combined, Base64.NO_WRAP)
     }
 
     suspend fun login(context: Context, email: String, deviceToken: String, sessionKey: ByteArray): Boolean = withContext(Dispatchers.IO) {
@@ -54,9 +54,11 @@ object AuthManager {
             Log.d(TAG, "Attempting login for email")
             val encryptedEmail = encryptData(email, sessionKey)
             val encryptedToken = encryptData(deviceToken, sessionKey)
+            val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+            Log.d(TAG, "Login with session key: $cleanSessionKey")
             val response = RetrofitClient.apiService(context).login(
                 LoginRequest(encryptedEmail, encryptedToken),
-                Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                cleanSessionKey
             )
             val token = response.access_token
             val refreshToken = response.refresh_token
@@ -75,9 +77,11 @@ object AuthManager {
             Log.d(TAG, "Attempting app registration for email")
             val encryptedEmail = encryptData(email, sessionKey)
             val encryptedToken = encryptData(deviceToken, sessionKey)
+            val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+            Log.d(TAG, "App registration with session key: $cleanSessionKey")
             val response = RetrofitClient.apiService(context).appRegister(
                 RegisterRequest(encryptedEmail, encryptedToken),
-                Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                cleanSessionKey
             )
             val token = response.access_token
             val refreshToken = response.refresh_token

@@ -89,15 +89,25 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
         setSupportActionBar(toolbar)
 
-        // Retrieve session key
+        // Retrieve session key with validation
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        sessionKey = prefs.getString("session_key", null)?.let { Base64.decode(it, Base64.DEFAULT) }
-            ?: run {
-                Log.e("VoiceDetection", "Session key missing")
-                Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-                AuthManager.logout(this)
-                ByteArray(0)
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("VoiceDetection", "Invalid session key format: ${e.message}")
+                null
             }
+        } ?: run {
+            Log.e("VoiceDetection", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -404,13 +414,15 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 recordingIndicator.startAnimation(clockTickAnimation)
             }
             try {
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                Log.d("VoiceDetection", "Sending API request with session key: $cleanSessionKey")
                 val response = withTimeout(1000000L) {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = language,
                         file = filePart,
                         voice = voicePart,
                         token = "Bearer $token",
-                        sessionKey = Base64.encodeToString(sessionKey, Base64.DEFAULT)
+                        sessionKey = cleanSessionKey
                     )
                 }
 
@@ -522,6 +534,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
             playbackIndicator.clearAnimation()
             playbackIndicator.visibility = View.INVISIBLE
         }
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onDestroy() {

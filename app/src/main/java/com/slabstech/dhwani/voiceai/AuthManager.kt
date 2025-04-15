@@ -21,7 +21,7 @@ object AuthManager {
     private const val TOKEN_KEY = "access_token"
     private const val REFRESH_TOKEN_KEY = "refresh_token"
     private const val EXPIRY_KEY = "token_expiry_time"
-    private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer
+    private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000
     private const val MAX_RETRIES = 3
     private const val TAG = "AuthManager"
     private const val GCM_TAG_LENGTH = 16

@@ -13,9 +13,6 @@ import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import java.util.UUID
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 class LoginActivity : AppCompatActivity() {
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
@@ -34,7 +31,6 @@ class LoginActivity : AppCompatActivity() {
         val emailEditText = findViewById<EditText>(R.id.emailEditText)
         val loginButton = findViewById<Button>(R.id.loginButton)
 
-        // Generate or retrieve device token
         var deviceToken = prefs.getString(DEVICE_TOKEN_KEY, null)
         if (deviceToken == null) {
             deviceToken = UUID.randomUUID().toString()
@@ -44,11 +40,10 @@ class LoginActivity : AppCompatActivity() {
             Log.d(TAG, "Using existing device token")
         }
 
-        // Generate or retrieve session key
         var sessionKey = prefs.getString(SESSION_KEY, null)?.let { encodedKey ->
             try {
                 val cleanKey = encodedKey.trim()
-                if (!isValidBase64(cleanKey)) {
+                if (!StringUtils.isValidBase64(cleanKey)) {
                     throw IllegalArgumentException("Invalid Base64 format for session key")
                 }
                 Base64.decode(cleanKey, Base64.DEFAULT)
@@ -137,10 +132,6 @@ class LoginActivity : AppCompatActivity() {
         Log.d(TAG, "Proceeding to VoiceDetectionActivity")
         startActivity(Intent(this@LoginActivity, VoiceDetectionActivity::class.java))
         finish()
-    }
-
-    private fun isValidBase64(str: String): Boolean {
-        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRestart() {

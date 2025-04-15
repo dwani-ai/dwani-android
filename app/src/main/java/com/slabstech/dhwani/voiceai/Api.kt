@@ -23,13 +23,13 @@ import java.security.SecureRandom
 data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val username: String, val password: String)
 data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
-data class TranscriptionRequest(val language: String) // Language will be encrypted
+data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
-data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String) // Prompt will be encrypted
+data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
 data class ChatResponse(val response: String)
-data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String) // Sentences will be encrypted
+data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
-data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String) // All fields encrypted
+data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String)
 data class VisualQueryResponse(val answer: String)
 
 interface ApiService {
@@ -49,28 +49,28 @@ interface ApiService {
     @POST("v1/transcribe/")
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
-        @Query("language") language: String, // Encrypted language
+        @Query("language") language: String,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): TranscriptionResponse
 
     @POST("v1/chat")
     suspend fun chat(
-        @Body chatRequest: ChatRequest, // Prompt encrypted
+        @Body chatRequest: ChatRequest,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): ChatResponse
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
-        @Query("input") input: String, // Encrypted input
+        @Query("input") input: String,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): ResponseBody
 
     @POST("v1/translate")
     suspend fun translate(
-        @Body translationRequest: TranslationRequest, // Sentences encrypted
+        @Body translationRequest: TranslationRequest,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): TranslationResponse
@@ -79,7 +79,7 @@ interface ApiService {
     @POST("v1/visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
-        @Part("data") data: RequestBody, // JSON body with query, src_lang, tgt_lang
+        @Part("data") data: RequestBody,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): VisualQueryResponse
@@ -87,7 +87,7 @@ interface ApiService {
     @Multipart
     @POST("v1/speech_to_speech")
     suspend fun speechToSpeech(
-        @Query("language") language: String, // Encrypted language
+        @Query("language") language: String,
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
         @Header("Authorization") token: String,

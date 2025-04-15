@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -24,6 +25,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -32,21 +34,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import retrofit2.Retrofit
-import retrofit2.http.Header
-import retrofit2.http.Multipart
-import retrofit2.http.POST
-import retrofit2.http.Part
-import retrofit2.http.Query
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlin.math.sqrt
 
 class VoiceDetectionActivity : AppCompatActivity() {
@@ -57,6 +54,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MIN_ENERGY_THRESHOLD = 0.04f
     private val PAUSE_DURATION_MS = 1000L
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     private lateinit var toggleRecordButton: ToggleButton
     private lateinit var audioLevelBar: ProgressBar
@@ -72,31 +71,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private var playbackActive = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
-
-    private val speechToSpeechApi: SpeechToSpeechApi by lazy {
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
-
-        Retrofit.Builder()
-            .baseUrl("https://slabstech-dhwani-internal-api-server.hf.space/")
-            .client(okHttpClient)
-            .build()
-            .create(SpeechToSpeechApi::class.java)
-    }
-
-    interface SpeechToSpeechApi {
-        @Multipart
-        @POST("v1/speech_to_speech")
-        suspend fun speechToSpeech(
-            @Query("language") language: String,
-            @Part file: MultipartBody.Part,
-            @Part("voice") voice: RequestBody,
-            @Header("Authorization") token: String
-        ): retrofit2.Response<okhttp3.ResponseBody>
-    }
+    private var sessionDialog: AlertDialog? = null
+    private lateinit var sessionKey: ByteArray
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,6 +88,26 @@ class VoiceDetectionActivity : AppCompatActivity() {
         clockTickAnimation = AnimationUtils.loadAnimation(this, R.anim.clock_tick)
 
         setSupportActionBar(toolbar)
+
+        // Retrieve session key with validation
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("VoiceDetection", "Invalid session key format: ${e.message}")
+                null
+            }
+        } ?: run {
+            Log.e("VoiceDetection", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -163,13 +159,43 @@ class VoiceDetectionActivity : AppCompatActivity() {
         bottomNavigation.selectedItemId = R.id.nav_voice
     }
 
+    override fun onResume() {
+        super.onResume()
+        sessionDialog = AlertDialog.Builder(this)
+            .setMessage("Checking session...")
+            .setCancelable(false)
+            .create()
+        sessionDialog?.show()
+
+        lifecycleScope.launch {
+            val tokenValid = AuthManager.isAuthenticated(this@VoiceDetectionActivity) &&
+                    AuthManager.refreshTokenIfNeeded(this@VoiceDetectionActivity)
+            Log.d("VoiceDetection", "onResume: Token valid = $tokenValid")
+            if (tokenValid) {
+                sessionDialog?.dismiss()
+                sessionDialog = null
+            } else {
+                sessionDialog?.dismiss()
+                sessionDialog = null
+                AlertDialog.Builder(this@VoiceDetectionActivity)
+                    .setTitle("Session Expired")
+                    .setMessage("Your session could not be refreshed. Please log in again.")
+                    .setPositiveButton("OK") { _, _ ->
+                        AuthManager.logout(this@VoiceDetectionActivity)
+                    }
+                    .setCancelable(false)
+                    .show()
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == RECORD_AUDIO_PERMISSION_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted
+                Toast.makeText(this, "Audio permission granted", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Audio permission is required", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Audio permission denied. Voice detection requires microphone access.", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -195,7 +221,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
     private fun startRecording() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Microphone permission is required to record audio.", Toast.LENGTH_SHORT).show()
             toggleRecordButton.isChecked = false
             return
         }
@@ -211,7 +237,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e("VoiceDetection", "AudioRecord initialization failed")
-            Toast.makeText(this, "Failed to initialize recording", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Failed to start recording. Please check your microphone.", Toast.LENGTH_SHORT).show()
             toggleRecordButton.isChecked = false
             return
         }
@@ -352,27 +378,49 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
+    private fun encryptAudio(audio: ByteArray): ByteArray {
+        return RetrofitClient.encryptAudio(audio, sessionKey)
+    }
+
     private fun sendAudioToApi(audioFile: File) {
-        val token = "YOUR_AUTH_TOKEN" // Replace with actual token retrieval logic
+        val token = AuthManager.getToken(this) ?: run {
+            runOnUiThread {
+                Toast.makeText(this, "Please log in to use voice detection.", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
-        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
-        val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
+        // Encrypt audio file
+        val audioBytes = audioFile.readBytes()
+        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
+        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        // Encrypt language and voice description
+        val encryptedLanguage = RetrofitClient.encryptText(language, sessionKey)
+        val encryptedVoice = RetrofitClient.encryptText(voiceDescription, sessionKey)
+
+        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
+        val voicePart = encryptedVoice.toRequestBody("text/plain".toMediaType())
+
+        lifecycleScope.launch {
             withContext(Dispatchers.Main) {
                 recordingIndicator.visibility = View.VISIBLE
                 recordingIndicator.startAnimation(clockTickAnimation)
             }
             try {
-                val response = withTimeout(1000000L) {
-                    speechToSpeechApi.speechToSpeech(
-                        language = language,
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                Log.d("VoiceDetection", "Sending API request with session key: $cleanSessionKey")
+                val response = withTimeout(30000L) { // Reduced timeout for better UX
+                    RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
+                        language = encryptedLanguage,
                         file = filePart,
                         voice = voicePart,
-                        token = "Bearer $token"
+                        token = "Bearer $token",
+                        sessionKey = cleanSessionKey
                     )
                 }
 
@@ -385,25 +433,45 @@ class VoiceDetectionActivity : AppCompatActivity() {
                             playAudio(outputFile)
                             Toast.makeText(this@VoiceDetectionActivity, "Response played", Toast.LENGTH_SHORT).show()
                         }
+                    } else {
+                        Log.e("VoiceDetection", "Empty response from API")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@VoiceDetectionActivity, "No audio response received from server.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } else {
-                    Log.e("VoiceDetection", "API error: ${response.code()} - ${response.errorBody()?.string()}")
+                    val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                    Log.e("VoiceDetection", "API error: ${response.code()} - $errorBody")
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@VoiceDetectionActivity, "API error: ${response.code()}", Toast.LENGTH_SHORT).show()
+                        when (response.code()) {
+                            401 -> {
+                                Toast.makeText(this@VoiceDetectionActivity, "Authentication failed. Please log in again.", Toast.LENGTH_SHORT).show()
+                                AuthManager.logout(this@VoiceDetectionActivity)
+                            }
+                            400 -> Toast.makeText(this@VoiceDetectionActivity, "Invalid audio input. Please try again.", Toast.LENGTH_SHORT).show()
+                            in 500..599 -> Toast.makeText(this@VoiceDetectionActivity, "Server error. Please try again later.", Toast.LENGTH_SHORT).show()
+                            else -> Toast.makeText(this@VoiceDetectionActivity, "Speech-to-speech failed: Error ${response.code()}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.e("VoiceDetection", "API call timed out: ${e.message}")
+                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@VoiceDetectionActivity, "Network timeout", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceDetectionActivity, "Network timeout. Please check your connection.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: IOException) {
+                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VoiceDetectionActivity, "Network error. Please check your internet.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e("VoiceDetection", "API call failed: ${e.message}", e)
+                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@VoiceDetectionActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceDetectionActivity, "An error occurred: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 audioFile.delete()
+                encryptedFile.delete()
                 withContext(Dispatchers.Main) {
                     recordingIndicator.clearAnimation()
                     recordingIndicator.visibility = View.INVISIBLE
@@ -443,7 +511,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 setOnErrorListener { mp, what, extra ->
                     Log.e("VoiceDetection", "MediaPlayer error: $what, $extra")
                     runOnUiThread {
-                        Toast.makeText(this@VoiceDetectionActivity, "Playback error", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VoiceDetectionActivity, "Playback failed. Please try again.", Toast.LENGTH_SHORT).show()
                     }
                     cleanupMediaPlayer()
                     true
@@ -453,7 +521,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
             Log.e("VoiceDetection", "Playback failed: ${e.message}", e)
             cleanupMediaPlayer()
             runOnUiThread {
-                Toast.makeText(this@VoiceDetectionActivity, "Playback failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@VoiceDetectionActivity, "Unable to play audio: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -469,6 +537,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         audioRecord?.release()
@@ -476,5 +548,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
         cleanupMediaPlayer()
         recordingIndicator.clearAnimation()
         playbackIndicator.clearAnimation()
+        sessionDialog?.dismiss()
+        sessionDialog = null
     }
 }

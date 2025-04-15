@@ -8,8 +8,11 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Base64
+import android.util.Log
 import android.view.View
 import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -20,17 +23,17 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.launch
-import android.util.Log
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
+import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -39,7 +42,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
-import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class DocsActivity : AppCompatActivity() {
 
@@ -53,6 +55,9 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private lateinit var sessionKey: ByteArray
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     private val pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileUpload(it) }
@@ -65,6 +70,25 @@ class DocsActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
+
+        // Retrieve session key with validation
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("DocsActivity", "Invalid session key format: ${e.message}")
+                null
+            }
+        } ?: run {
+            Log.e("DocsActivity", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         checkAuthentication()
 
@@ -250,6 +274,10 @@ class DocsActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
+    private fun encryptFile(file: ByteArray): ByteArray {
+        return RetrofitClient.encryptAudio(file, sessionKey) // Reusing audio encryption for files
+    }
+
     private fun handleFileUpload(uri: Uri) {
         val fileName = getFileName(uri)
         val inputStream = contentResolver.openInputStream(uri)
@@ -282,6 +310,12 @@ class DocsActivity : AppCompatActivity() {
             }
         }
 
+        // Encrypt file
+        val fileBytes = file.readBytes()
+        val encryptedFileBytes = encryptFile(fileBytes)
+        val encryptedFile = File(cacheDir, "encrypted_$fileName")
+        FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
+
         val defaultQuery = "Describe the image"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         val message = Message(defaultQuery, timestamp, true, uri)
@@ -289,7 +323,7 @@ class DocsActivity : AppCompatActivity() {
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
-        getVisualQueryResponse(defaultQuery, file)
+        getVisualQueryResponse(defaultQuery, encryptedFile)
     }
 
     private fun compressImage(inputFile: File): File {
@@ -376,16 +410,38 @@ class DocsActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
-        val tgtLang = srcLang // Response in the same language as input
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val tgtLang = srcLang
+
+        // Encrypt query and language fields
+        val encryptedQuery = RetrofitClient.encryptText(query, sessionKey)
+        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
+        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
+        Log.d("DocsActivity", "Encrypted fields - query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
+
+        // Create JSON body
+        val visualQueryRequest = VisualQueryRequest(
+            query = encryptedQuery,
+            src_lang = encryptedSrcLang,
+            tgt_lang = encryptedTgtLang
+        )
+        val jsonBody = Gson().toJson(visualQueryRequest)
+        Log.d("DocsActivity", "Sending visual query JSON: $jsonBody")
+        val dataBody = jsonBody.toRequestBody("application/json".toMediaType())
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
                 val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                val queryBody = query.toRequestBody("text/plain".toMediaType())
-                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(filePart, queryBody, srcLang, tgtLang, "Bearer $token")
+                Log.d("DocsActivity", "File part - name: ${file.name}, size: ${file.length()}")
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
+                    filePart,
+                    dataBody,
+                    "Bearer $token",
+                    cleanSessionKey
+                )
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Answer: $answerText", timestamp, false)
@@ -393,15 +449,19 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
+
+                // Encrypt text for TTS
+                val encryptedAnswerText = RetrofitClient.encryptText(answerText, sessionKey)
                 SpeechUtils.textToSpeech(
                     context = this@DocsActivity,
                     scope = lifecycleScope,
-                    text = answerText,
+                    text = encryptedAnswerText,
                     message = message,
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang
+                    srcLang = tgtLang,
+                    sessionKey = sessionKey
                 )
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Visual query failed: ${e.message}", e)
@@ -411,6 +471,10 @@ class DocsActivity : AppCompatActivity() {
                 file.delete()
             }
         }
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRequestPermissionsResult(

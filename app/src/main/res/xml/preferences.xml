@@ -8,88 +8,30 @@
         android:entryValues="@array/language_values"
         android:summary="Select the transcription language"/>
 
-
     <PreferenceCategory android:title="Text-to-Speech Settings">
         <SwitchPreferenceCompat
             android:key="tts_enabled"
             android:title="Enable TTS"
             android:defaultValue="false"
             android:summary="Turn text-to-speech on or off"/>
-
         <SwitchPreferenceCompat
             android:key="auto_play_tts"
             android:title="Auto-Play TTS"
             android:defaultValue="true"
             android:summary="Automatically play TTS audio when enabled"
             android:dependency="tts_enabled"/>
-
-        <ListPreference
-            android:key="tts_voice"
-            android:title="TTS Voice"
-            android:defaultValue="Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-            android:entries="@array/tts_voice_options"
-            android:entryValues="@array/tts_voice_values"
-            android:summary="Select the voice for text-to-speech"
-            android:dependency="tts_enabled"/>
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="API Endpoints">
-        <EditTextPreference
-            android:key="max_retries"
-            android:title="Max API Retries"
-            android:defaultValue="3"
-            android:inputType="number"
-            android:summary="Set the number of retry attempts for API calls"/>
+    <PreferenceCategory android:title="API Endpoint">
 
         <EditTextPreference
-            android:key="transcription_api_endpoint"
-            android:title="Transcription API Endpoint"
-            android:defaultValue="https://slabstech-dhwani-server.hf.space/v1/transcribe/"
+            android:key="api_endpoint"
+            android:title="API Endpoint"
+            android:defaultValue="https://slabstech-dhwani-server.hf.space/"
             android:inputType="textUri"
-            android:summary="Set the URL for the transcription API"/>
-
-        <EditTextPreference
-            android:key="chat_api_endpoint"
-            android:title="Chat API Endpoint"
-            android:defaultValue="https://slabstech-dhwani-server.hf.space/v1/chat"
-            android:inputType="textUri"
-            android:summary="Set the URL for the chat API"/>
-
-        <EditTextPreference
-            android:key="translate_api_endpoint"
-            android:title="Translate API Endpoint"
-            android:defaultValue="https://slabstech-dhwani-server.hf.space/v1/translate"
-            android:inputType="textUri"
-            android:summary="Set the URL for the Translate API"/>
-
-        <EditTextPreference
-            android:key="vlm_api_endpoint"
-            android:title="Image API Endpoint"
-            android:defaultValue="https://slabstech-dhwani-server.hf.space/v1/visual_query/"
-            android:inputType="textUri"
-            android:summary="Set the URL for the Image API"/>
-
-
-        <EditTextPreference
-            android:key="tts_api_endpoint"
-            android:title="Text to Speech API Endpoint"
-            android:defaultValue="https://slabstech-dhwani-server.hf.space/v1/audio/speech"
-            android:inputType="textUri"
-            android:summary="Set the URL for the TTS API"/>
-
-        <EditTextPreference
-            android:key="chat_api_key"
-            android:title="Dhwani API Key"
-            android:defaultValue="dhwani-version-api-server-0-0-1"
-            android:inputType="textPassword"
-            android:summary="Enter your secure API key for Dhwani"/>
-        <Preference
-            android:key="test_endpoints"
-            android:title="Test Endpoints"
-            android:summary="Check if the API endpoints are reachable"/>
+            android:summary="Set the URL for the API"/>
 
     </PreferenceCategory>
-
 
     <SwitchPreferenceCompat
         android:key="dark_theme"

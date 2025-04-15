@@ -11,8 +11,8 @@ android {
         applicationId = "com.slabstech.dhwani.voiceai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 44
-        versionName = "1.0.5"
+        versionCode = 45
+        versionName = "1.0.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -62,5 +62,4 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("org.json:json:20230227")
-    implementation ("com.microsoft.onnxruntime:onnxruntime-android:1.16.0")
 }

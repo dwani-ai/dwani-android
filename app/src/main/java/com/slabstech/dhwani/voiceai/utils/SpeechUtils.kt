@@ -2,12 +2,14 @@ package com.slabstech.dhwani.voiceai.utils
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.util.Base64
 import android.util.Log
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
+import com.slabstech.dhwani.voiceai.AuthManager
 import com.slabstech.dhwani.voiceai.Message
 import com.slabstech.dhwani.voiceai.MessageAdapter
 import com.slabstech.dhwani.voiceai.R
@@ -23,9 +25,9 @@ object SpeechUtils {
     // Language codes from resources and AnswerActivity
     private val europeanLanguages = setOf(
         "eng_Latn", // English
-        "deu_Latn", // German (assumed from "German")
+        "deu_Latn", // German
         "fra_Latn", // French
-        "nld_Latn"  // Dutch (ISO 639-3 code for Dutch)
+        "nld_Latn"  // Dutch
     )
 
     private val indianLanguages = setOf(
@@ -39,44 +41,22 @@ object SpeechUtils {
     fun textToSpeech(
         context: Context,
         scope: LifecycleCoroutineScope,
-        text: String,
+        text: String, // Encrypted text (Base64-encoded AES-GCM)
         message: Message,
         recyclerView: RecyclerView,
         adapter: MessageAdapter,
         ttsProgressBarVisibility: (Boolean) -> Unit,
-        srcLang: String? = null // Source language parameter
+        srcLang: String? = null,
+        sessionKey: ByteArray? = null // Required for X-Session-Key header
     ) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean("tts_enabled", false)) return
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(context) ?: return
 
-        // Determine the model and voice based on source language
-        val (model, voice) = when {
-            srcLang != null && europeanLanguages.contains(srcLang) -> {
-                Pair(
-                    "parler-tts/parler-tts-mini-multilingual-v1.1",
-                    "Daniel's voice is monotone yet slightly fast in delivery, with a very close recording that almost has no background noise."
-                )
-            }
-            srcLang != null && indianLanguages.contains(srcLang) -> {
-                Pair(
-                    "ai4bharat/indic-parler-tts",
-                    prefs.getString(
-                        "tts_voice",
-                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                )
-            }
-            else -> {
-                // Default to Indian model if no language specified or unrecognized
-                Pair(
-                    "ai4bharat/indic-parler-tts",
-                    prefs.getString(
-                        "tts_voice",
-                        "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                    ) ?: "Anu speaks with a high pitch at a normal pace in a clear, close-sounding environment. Her neutral tone is captured with excellent audio quality."
-                )
-            }
+        if (sessionKey == null) {
+            Log.e("SpeechUtils", "Session key is null, cannot proceed with TTS")
+            Toast.makeText(context, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            return
         }
 
         val autoPlay = prefs.getBoolean(AUTO_PLAY_KEY, true)
@@ -84,13 +64,11 @@ object SpeechUtils {
         scope.launch {
             ttsProgressBarVisibility(true)
             try {
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(context).textToSpeech(
-                    input = text,
-                    voice = voice,
-                    model = model,
-                    responseFormat = "mp3",
-                    speed = 1.0,
-                    token = "Bearer $token"
+                    input = text, // Already encrypted
+                    token = "Bearer $token",
+                    sessionKey = cleanSessionKey
                 )
                 val audioBytes = response.byteStream().readBytes()
                 if (audioBytes.isNotEmpty()) {
@@ -119,6 +97,9 @@ object SpeechUtils {
                 } else {
                     Toast.makeText(context, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("SpeechUtils", "TTS failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("SpeechUtils", "TTS failed: ${e.message}", e)
                 Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -134,17 +115,23 @@ object SpeechUtils {
         sentences: List<String>,
         srcLang: String,
         tgtLang: String,
+        sessionKey: ByteArray,
         onSuccess: (String) -> Unit,
         onError: (Exception) -> Unit
     ) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val token = prefs.getString("access_token", null) ?: return
+        val token = AuthManager.getToken(context) ?: return
+
+        // Encrypt sentences
+        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it, sessionKey) }
+        val translationRequest = TranslationRequest(encryptedSentences, srcLang, tgtLang)
 
         scope.launch {
             try {
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(context).translate(
-                    TranslationRequest(sentences, srcLang, tgtLang),
-                    "Bearer $token"
+                    translationRequest,
+                    "Bearer $token",
+                    cleanSessionKey
                 )
                 val translatedText = response.translations.joinToString("\n")
                 onSuccess(translatedText)

@@ -11,6 +11,7 @@ import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder.AudioSource
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -69,6 +70,9 @@ class AnswerActivity : AppCompatActivity() {
     private val AUTO_PLAY_KEY = "auto_play_tts"
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var sessionDialog: AlertDialog? = null
+    private lateinit var sessionKey: ByteArray
+    private val GCM_TAG_LENGTH = 16
+    private val GCM_NONCE_LENGTH = 12
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -77,6 +81,25 @@ class AnswerActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_answer)
+
+        // Retrieve session key with validation
+        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
+            try {
+                val cleanKey = encodedKey.trim()
+                if (!isValidBase64(cleanKey)) {
+                    throw IllegalArgumentException("Invalid Base64 format for session key")
+                }
+                Base64.decode(cleanKey, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                Log.e("AnswerActivity", "Invalid session key format: ${e.message}")
+                null
+            }
+        } ?: run {
+            Log.e("AnswerActivity", "Session key missing")
+            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
+            AuthManager.logout(this)
+            ByteArray(0)
+        }
 
         checkAuthentication()
 
@@ -101,7 +124,7 @@ class AnswerActivity : AppCompatActivity() {
             }
 
             messageAdapter = MessageAdapter(messageList, { position ->
-                ShinMessageOptionsDialog(position)
+                showMessageOptionsDialog(position)
             }, { message, button ->
                 toggleAudioPlayback(message, button)
             })
@@ -184,6 +207,16 @@ class AnswerActivity : AppCompatActivity() {
                             .setMessage("Switch to Docs?")
                             .setPositiveButton("Yes") { _, _ ->
                                 startActivity(Intent(this, DocsActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
+                    }
+                    R.id.nav_voice -> {
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Voice?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, VoiceDetectionActivity::class.java))
                             }
                             .setNegativeButton("No", null)
                             .show()
@@ -312,9 +345,8 @@ class AnswerActivity : AppCompatActivity() {
         pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
-    private fun ShinMessageOptionsDialog(position: Int) {
+    private fun showMessageOptionsDialog(position: Int) {
         if (position < 0 || position >= messageList.size) return
-
         val message = messageList[position]
         val options = arrayOf("Delete", "Share", "Copy")
         AlertDialog.Builder(this)
@@ -349,6 +381,10 @@ class AnswerActivity : AppCompatActivity() {
         val clip = ClipData.newPlainText("Message", copyText)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun encryptAudio(audio: ByteArray): ByteArray {
+        return RetrofitClient.encryptAudio(audio, sessionKey)
     }
 
     private fun startRecording() {
@@ -457,14 +493,52 @@ class AnswerActivity : AppCompatActivity() {
     private fun sendAudioToApi(audioFile: File) {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        // Map to supported languages to match server validation
+        val supportedLanguage = when (selectedLanguage.lowercase()) {
+            "hindi" -> "hindi"
+            "tamil" -> "tamil"
+            else -> "kannada" // Default to kannada
+        }
 
-        val requestFile = audioFile.asRequestBody("audio/x-wav".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        // Encrypt audio file
+        val audioBytes = audioFile.readBytes()
+        val encryptedAudio = try {
+            encryptAudio(audioBytes)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Audio encryption failed: ${e.message}")
+            runOnUiThread {
+                Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
+        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
+
+        // Encrypt language
+        val encryptedLanguage = try {
+            RetrofitClient.encryptText(supportedLanguage, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Language encryption failed: ${e.message}")
+            runOnUiThread {
+                Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        Log.d("AnswerActivity", "Transcribe request - file: ${encryptedFile.name}, language: $encryptedLanguage")
+
+        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(filePart, selectedLanguage, "Bearer $token")
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                val response = RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(
+                    filePart,
+                    encryptedLanguage,
+                    "Bearer $token",
+                    cleanSessionKey
+                )
                 val voiceQueryText = response.text
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (voiceQueryText.isNotEmpty()) {
@@ -476,14 +550,18 @@ class AnswerActivity : AppCompatActivity() {
                     scrollToLatestMessage()
                     getChatResponse(voiceQueryText)
                 } else {
-                    Toast.makeText(this@AnswerActivity, "Voice Query empty", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AnswerActivity, "Voice query empty", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("AnswerActivity", "Transcription failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(this@AnswerActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Transcription failed: ${e.message}", e)
                 Toast.makeText(this@AnswerActivity, "Voice query error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 progressBar.visibility = View.GONE
-                audioFile.delete()
+                audioFile?.delete()
+                encryptedFile.delete()
             }
         }
     }
@@ -507,15 +585,44 @@ class AnswerActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda" // Default to English
-        val tgtLang = srcLang // Response in the same language as input
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val tgtLang = srcLang
 
-        val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
+        // Encrypt all fields
+        val encryptedPrompt = try {
+            RetrofitClient.encryptText(prompt, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Prompt encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val encryptedSrcLang = try {
+            RetrofitClient.encryptText(srcLang, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Source language encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val encryptedTgtLang = try {
+            RetrofitClient.encryptText(tgtLang, sessionKey)
+        } catch (e: Exception) {
+            Log.e("AnswerActivity", "Target language encryption failed: ${e.message}")
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Log.d("AnswerActivity", "Chat request - prompt: $encryptedPrompt, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
+
+        val chatRequest = ChatRequest(encryptedPrompt, encryptedSrcLang, encryptedTgtLang)
 
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val response = RetrofitClient.apiService(this@AnswerActivity).chat(chatRequest, "Bearer $token")
+                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                val response = RetrofitClient.apiService(this@AnswerActivity).chat(
+                    chatRequest,
+                    "Bearer $token",
+                    cleanSessionKey
+                )
                 val answerText = response.response
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Answer: $answerText", timestamp, false)
@@ -523,18 +630,32 @@ class AnswerActivity : AppCompatActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
-                SpeechUtils.textToSpeech(
-                    context = this@AnswerActivity,
-                    scope = lifecycleScope,
-                    text = answerText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible ->
-                        ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                    },
-                    srcLang = tgtLang
-                )
+
+                // Encrypt text for TTS
+                val encryptedAnswerText = try {
+                    RetrofitClient.encryptText(answerText, sessionKey)
+                } catch (e: Exception) {
+                    Log.e("AnswerActivity", "TTS text encryption failed: ${e.message}")
+                    ""
+                }
+                if (encryptedAnswerText.isNotEmpty()) {
+                    SpeechUtils.textToSpeech(
+                        context = this@AnswerActivity,
+                        scope = lifecycleScope,
+                        text = encryptedAnswerText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible ->
+                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                        },
+                        srcLang = tgtLang,
+                        sessionKey = sessionKey
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("AnswerActivity", "Chat failed: ${e.message}, response: ${e.response()?.errorBody()?.string()}")
+                Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Chat failed: ${e.message}", e)
                 Toast.makeText(this@AnswerActivity, "Chat error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -567,6 +688,10 @@ class AnswerActivity : AppCompatActivity() {
             playIconResId = android.R.drawable.ic_media_play,
             stopIconResId = R.drawable.ic_media_stop
         )
+    }
+
+    private fun isValidBase64(str: String): Boolean {
+        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRequestPermissionsResult(

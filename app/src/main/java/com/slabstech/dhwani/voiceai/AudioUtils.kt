@@ -62,7 +62,7 @@ object AudioUtils {
                     val energy = calculateAudioLevel(audioBuffer, bytesRead)
                     val currentTime = System.currentTimeMillis()
 
-                    context.runOnUiThread {
+                    (context as? AppCompatActivity)?.runOnUiThread {
                         audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
                     }
 
@@ -84,7 +84,7 @@ object AudioUtils {
 
             audioRecord.stop()
             audioRecord.release()
-            context.runOnUiThread {
+            (context as? AppCompatActivity)?.runOnUiThread {
                 recordingIndicator.visibility = View.INVISIBLE
             }
         }.start()

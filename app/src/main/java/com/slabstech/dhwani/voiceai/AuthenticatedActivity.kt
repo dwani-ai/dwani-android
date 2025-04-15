@@ -18,19 +18,26 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
     protected lateinit var sessionKey: ByteArray
     protected val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     protected var currentTheme: Boolean? = null
+    private var isRefreshingToken = false // Prevent concurrent refreshes
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Initialize currentTheme to match preference to avoid recreation
+        currentTheme = prefs.getBoolean("dark_theme", false)
         super.onCreate(savedInstanceState)
+        Log.d("AuthenticatedActivity", "onCreate: Activity created with theme $currentTheme")
         retrieveSessionKey()
         checkAuthentication()
     }
 
     override fun onResume() {
         super.onResume()
-        val isDarkTheme = prefs.getBoolean("dark_theme", false)
-        if (currentTheme != isDarkTheme) {
-            currentTheme = isDarkTheme
-            recreate()
+        Log.d("AuthenticatedActivity", "onResume: Checking session")
+
+        // Skip theme check to avoid recreation loop
+        // Theme changes should be handled explicitly (e.g., in SettingsActivity)
+
+        if (isRefreshingToken) {
+            Log.d("AuthenticatedActivity", "onResume: Skipping token refresh, already in progress")
             return
         }
 
@@ -41,21 +48,27 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
         sessionDialog?.show()
 
         lifecycleScope.launch {
-            val tokenValid = AuthManager.refreshTokenIfNeeded(this@AuthenticatedActivity)
-            if (tokenValid) {
-                sessionDialog?.dismiss()
-                sessionDialog = null
-            } else {
-                sessionDialog?.dismiss()
-                sessionDialog = null
-                AlertDialog.Builder(this@AuthenticatedActivity)
-                    .setTitle("Session Expired")
-                    .setMessage("Your session could not be refreshed. Please log in again.")
-                    .setPositiveButton("OK") { _, _ ->
-                        AuthManager.logout(this@AuthenticatedActivity)
-                    }
-                    .setCancelable(false)
-                    .show()
+            isRefreshingToken = true
+            try {
+                val tokenValid = AuthManager.refreshTokenIfNeeded(this@AuthenticatedActivity)
+                Log.d("AuthenticatedActivity", "onResume: Token valid: $tokenValid")
+                if (tokenValid) {
+                    sessionDialog?.dismiss()
+                    sessionDialog = null
+                } else {
+                    sessionDialog?.dismiss()
+                    sessionDialog = null
+                    AlertDialog.Builder(this@AuthenticatedActivity)
+                        .setTitle("Session Expired")
+                        .setMessage("Your session could not be refreshed. Please log in again.")
+                        .setPositiveButton("OK") { _, _ ->
+                            AuthManager.logout(this@AuthenticatedActivity)
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+            } finally {
+                isRefreshingToken = false
             }
         }
     }
@@ -73,16 +86,18 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
                 null
             }
         } ?: run {
-            Log.e("AuthenticatedActivity", "Session key missing")
-            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-            AuthManager.logout(this)
-            ByteArray(0)
+            Log.e("AuthenticatedActivity", "Session key missing, generating new one")
+            // Generate a new session key instead of logging out
+            val newKey = ByteArray(16).apply { java.security.SecureRandom().nextBytes(this) }
+            prefs.edit().putString("session_key", Base64.encodeToString(newKey, Base64.NO_WRAP)).apply()
+            newKey
         }
     }
 
     private fun checkAuthentication() {
         lifecycleScope.launch {
-            if (!AuthManager.isAuthenticated(this@AuthenticatedActivity) || !AuthManager.refreshTokenIfNeeded(this@AuthenticatedActivity)) {
+            if (!AuthManager.isAuthenticated(this@AuthenticatedActivity)) {
+                Log.d("AuthenticatedActivity", "checkAuthentication: Not authenticated, logging out")
                 AuthManager.logout(this@AuthenticatedActivity)
             }
         }

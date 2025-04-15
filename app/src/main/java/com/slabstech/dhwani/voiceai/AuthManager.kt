@@ -101,7 +101,7 @@ object AuthManager {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastRefreshAttempt < REFRESH_DEBOUNCE_MS) {
             Log.d(TAG, "Skipping token refresh, too soon since last attempt")
-            return@withContext true // Assume token is still valid to avoid spamming
+            return@withContext true // Assume token is valid
         }
         lastRefreshAttempt = currentTime
 

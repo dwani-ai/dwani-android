@@ -13,10 +13,10 @@ import android.view.View
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Toast
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
@@ -27,9 +27,9 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.ByteArrayOutputStream
 
 class DocsActivity : MessageActivity() {
 
@@ -45,6 +45,7 @@ class DocsActivity : MessageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("DocsActivity", "onCreate called")
         setContentView(R.layout.activity_docs)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -68,6 +69,11 @@ class DocsActivity : MessageActivity() {
         attachFab.setOnClickListener {
             pickFileLauncher.launch("*/*")
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d("DocsActivity", "onResume called")
     }
 
     private fun handleFileUpload(uri: Uri) {
@@ -254,5 +260,10 @@ class DocsActivity : MessageActivity() {
             grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             pickFileLauncher.launch("*/*")
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d("DocsActivity", "onDestroy called")
     }
 }

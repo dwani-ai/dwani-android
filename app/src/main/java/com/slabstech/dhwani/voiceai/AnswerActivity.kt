@@ -47,6 +47,7 @@ class AnswerActivity : MessageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("AnswerActivity", "onCreate called")
         setContentView(R.layout.activity_answer)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -121,6 +122,11 @@ class AnswerActivity : MessageActivity() {
                 }
             }
         })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d("AnswerActivity", "onResume called")
     }
 
     private fun startRecording() {
@@ -288,6 +294,7 @@ class AnswerActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d("AnswerActivity", "onDestroy called")
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }

@@ -68,6 +68,7 @@ class LoginActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 Log.d(TAG, "Checking authentication state")
                 if (AuthManager.isAuthenticated(this@LoginActivity)) {
+                    Log.d(TAG, "User is authenticated, checking token validity")
                     val tokenRefreshed = AuthManager.refreshTokenIfNeeded(this@LoginActivity)
                     Log.d(TAG, "Token refresh result: $tokenRefreshed")
                     if (tokenRefreshed) {

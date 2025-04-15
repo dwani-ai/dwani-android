@@ -102,6 +102,8 @@ object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
+    private var lastAuthRefreshAttempt = 0L
+    private const val AUTH_REFRESH_DEBOUNCE_MS = 5000L // 5 seconds
 
     fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
         val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
@@ -127,27 +129,39 @@ object RetrofitClient {
     private fun getOkHttpClient(context: Context): OkHttpClient {
         val authenticator = object : okhttp3.Authenticator {
             override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastAuthRefreshAttempt < AUTH_REFRESH_DEBOUNCE_MS) {
+                    Log.d("RetrofitClient", "Skipping authenticator refresh, too soon")
+                    return null
+                }
+                lastAuthRefreshAttempt = currentTime
+
                 val refreshToken = AuthManager.getRefreshToken(context) ?: return null
                 try {
                     val refreshResponse = runBlocking {
                         apiService(context).refreshToken("Bearer $refreshToken")
                     }
                     val newToken = refreshResponse.access_token
-                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
                     AuthManager.saveTokens(context, newToken, refreshResponse.refresh_token, newExpiryTime)
+                    Log.d("RetrofitClient", "Authenticator refreshed token successfully")
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()
                 } catch (e: Exception) {
-                    Log.e("RetrofitClient", "Token refresh failed: ${e.message}", e)
+                    Log.e("RetrofitClient", "Token refresh failed in authenticator: ${e.message}", e)
                     return null
                 }
             }
         }
 
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            setLevel(HttpLoggingInterceptor.Level.BODY)
+        }
+
         return OkHttpClient.Builder()
             .authenticator(authenticator)
-            .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

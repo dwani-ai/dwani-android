@@ -21,10 +21,9 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
     private var isRefreshingToken = false // Prevent concurrent refreshes
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Initialize currentTheme to match preference to avoid recreation
         currentTheme = prefs.getBoolean("dark_theme", false)
         super.onCreate(savedInstanceState)
-        Log.d("AuthenticatedActivity", "onCreate: Activity created with theme $currentTheme")
+        Log.d("_authenticatedActivity", "onCreate: Activity created with theme $currentTheme")
         retrieveSessionKey()
         checkAuthentication()
     }
@@ -32,9 +31,6 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("AuthenticatedActivity", "onResume: Checking session")
-
-        // Skip theme check to avoid recreation loop
-        // Theme changes should be handled explicitly (e.g., in SettingsActivity)
 
         if (isRefreshingToken) {
             Log.d("AuthenticatedActivity", "onResume: Skipping token refresh, already in progress")
@@ -87,7 +83,6 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
             }
         } ?: run {
             Log.e("AuthenticatedActivity", "Session key missing, generating new one")
-            // Generate a new session key instead of logging out
             val newKey = ByteArray(16).apply { java.security.SecureRandom().nextBytes(this) }
             prefs.edit().putString("session_key", Base64.encodeToString(newKey, Base64.NO_WRAP)).apply()
             newKey

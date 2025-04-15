@@ -49,6 +49,7 @@ class TranslateActivity : MessageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("TranslateActivity", "onCreate called")
         setContentView(R.layout.activity_translate)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -124,6 +125,11 @@ class TranslateActivity : MessageActivity() {
                 }
             }
         })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d("TranslateActivity", "onResume called")
     }
 
     private fun startRecording() {
@@ -311,6 +317,7 @@ class TranslateActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d("TranslateActivity", "onDestroy called")
         mediaPlayer?.release()
         mediaPlayer = null
         messageList.forEach { it.audioFile?.delete() }

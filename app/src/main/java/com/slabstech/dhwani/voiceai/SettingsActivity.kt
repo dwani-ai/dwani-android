@@ -132,23 +132,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         private fun testEndpoints() {
-            val prefs = preferenceManager.sharedPreferences
-            val transcriptionUrl = prefs?.getString("transcription_api_endpoint", "https://slabstech-dhwani-server.hf.space/transcribe/") ?: ""
-            val chatUrl = prefs?.getString("chat_api_endpoint", "https://slabstech-dhwani-server.hf.space/chat") ?: ""
-            val language = prefs?.getString("language", "kannada") ?: "kannada"
 
-            CoroutineScope(Dispatchers.Main).launch {
-                val transcriptionResult = testEndpoint("$transcriptionUrl?language=$language")
-                val chatResult = testEndpoint(chatUrl)
 
-                val message = buildString {
-                    append("Transcription API: ")
-                    append(if (transcriptionResult) "Success" else "Failed")
-                    append("\nChat API: ")
-                    append(if (chatResult) "Success" else "Failed")
-                }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            }
         }
 
         private suspend fun testEndpoint(url: String): Boolean = withContext(Dispatchers.IO) {

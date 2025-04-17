@@ -21,11 +21,13 @@ object AuthManager {
     private const val TOKEN_KEY = "access_token"
     private const val REFRESH_TOKEN_KEY = "refresh_token"
     private const val EXPIRY_KEY = "token_expiry_time"
-    private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer
+    private const val EXPIRY_BUFFER_MS = 60 * 60 * 1000L // 1 hour
     private const val MAX_RETRIES = 3
     private const val TAG = "AuthManager"
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
+    private var lastRefreshAttempt = 0L
+    private const val REFRESH_DEBOUNCE_MS = 5000L // 5 seconds
 
     private fun getSecurePrefs(context: Context): SharedPreferences {
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
@@ -62,7 +64,7 @@ object AuthManager {
             )
             val token = response.access_token
             val refreshToken = response.refresh_token
-            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
             saveTokens(context, token, refreshToken, expiryTime)
             Log.d(TAG, "Login successful, expiry: $expiryTime")
             true
@@ -85,7 +87,7 @@ object AuthManager {
             )
             val token = response.access_token
             val refreshToken = response.refresh_token
-            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+            val expiryTime = getTokenExpiration(token) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
             saveTokens(context, token, refreshToken, expiryTime)
             Log.d(TAG, "App registration successful, expiry: $expiryTime")
             true
@@ -96,6 +98,13 @@ object AuthManager {
     }
 
     suspend fun refreshTokenIfNeeded(context: Context): Boolean = withContext(Dispatchers.IO) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastRefreshAttempt < REFRESH_DEBOUNCE_MS) {
+            Log.d(TAG, "Skipping token refresh, too soon since last attempt")
+            return@withContext true // Assume token is valid
+        }
+        lastRefreshAttempt = currentTime
+
         val prefs = getSecurePrefs(context)
         val currentToken = prefs.getString(TOKEN_KEY, null)
         val refreshToken = prefs.getString(REFRESH_TOKEN_KEY, null)
@@ -112,9 +121,9 @@ object AuthManager {
                     val response = RetrofitClient.apiService(context).refreshToken("Bearer $refreshToken")
                     val newToken = response.access_token
                     val newRefreshToken = response.refresh_token
-                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
                     saveTokens(context, newToken, newRefreshToken, newExpiryTime)
-                    Log.d(TAG, "Token refreshed successfully")
+                    Log.d(TAG, "Token refreshed successfully, new expiry: $newExpiryTime")
                     return@withContext true
                 } catch (e: Exception) {
                     Log.e(TAG, "Token refresh attempt ${attempts + 1} failed: ${e.message}", e)

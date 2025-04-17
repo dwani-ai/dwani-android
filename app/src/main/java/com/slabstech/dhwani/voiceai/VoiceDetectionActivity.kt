@@ -6,12 +6,9 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
-import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
@@ -20,12 +17,10 @@ import android.widget.ProgressBar
 import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -38,15 +33,11 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.math.sqrt
 
-class VoiceDetectionActivity : AppCompatActivity() {
+class VoiceDetectionActivity : AuthenticatedActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 101
     private val SAMPLE_RATE = 16000
@@ -71,11 +62,10 @@ class VoiceDetectionActivity : AppCompatActivity() {
     private var playbackActive = false
     private var mediaPlayer: MediaPlayer? = null
     private var latestAudioFile: File? = null
-    private var sessionDialog: AlertDialog? = null
-    private lateinit var sessionKey: ByteArray
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("VoiceDetectionActivity", "onCreate called")
         setContentView(R.layout.activity_voice_detection)
 
         toggleRecordButton = findViewById(R.id.toggleRecordButton)
@@ -89,26 +79,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
 
         setSupportActionBar(toolbar)
 
-        // Retrieve session key with validation
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
-            try {
-                val cleanKey = encodedKey.trim()
-                if (!isValidBase64(cleanKey)) {
-                    throw IllegalArgumentException("Invalid Base64 format for session key")
-                }
-                Base64.decode(cleanKey, Base64.DEFAULT)
-            } catch (e: IllegalArgumentException) {
-                Log.e("VoiceDetection", "Invalid session key format: ${e.message}")
-                null
-            }
-        } ?: run {
-            Log.e("VoiceDetection", "Session key missing")
-            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-            AuthManager.logout(this)
-            ByteArray(0)
-        }
-
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
@@ -121,200 +91,17 @@ class VoiceDetectionActivity : AppCompatActivity() {
             if (isChecked) startRecording() else stopRecording()
         }
 
-        bottomNavigation.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_answer -> {
-                    AlertDialog.Builder(this)
-                        .setMessage("Switch to Answers?")
-                        .setPositiveButton("Yes") { _, _ ->
-                            startActivity(Intent(this, AnswerActivity::class.java))
-                        }
-                        .setNegativeButton("No", null)
-                        .show()
-                    false
-                }
-                R.id.nav_translate -> {
-                    AlertDialog.Builder(this)
-                        .setMessage("Switch to Translate?")
-                        .setPositiveButton("Yes") { _, _ ->
-                            startActivity(Intent(this, TranslateActivity::class.java))
-                        }
-                        .setNegativeButton("No", null)
-                        .show()
-                    false
-                }
-                R.id.nav_docs -> {
-                    AlertDialog.Builder(this)
-                        .setMessage("Switch to Docs?")
-                        .setPositiveButton("Yes") { _, _ ->
-                            startActivity(Intent(this, DocsActivity::class.java))
-                        }
-                        .setNegativeButton("No", null)
-                        .show()
-                    false
-                }
-                else -> false
-            }
-        }
-        bottomNavigation.selectedItemId = R.id.nav_voice
+        NavigationUtils.setupBottomNavigation(this, bottomNavigation, R.id.nav_voice)
     }
 
     override fun onResume() {
         super.onResume()
-        sessionDialog = AlertDialog.Builder(this)
-            .setMessage("Checking session...")
-            .setCancelable(false)
-            .create()
-        sessionDialog?.show()
-
-        lifecycleScope.launch {
-            val tokenValid = AuthManager.isAuthenticated(this@VoiceDetectionActivity) &&
-                    AuthManager.refreshTokenIfNeeded(this@VoiceDetectionActivity)
-            Log.d("VoiceDetection", "onResume: Token valid = $tokenValid")
-            if (tokenValid) {
-                sessionDialog?.dismiss()
-                sessionDialog = null
-            } else {
-                sessionDialog?.dismiss()
-                sessionDialog = null
-                AlertDialog.Builder(this@VoiceDetectionActivity)
-                    .setTitle("Session Expired")
-                    .setMessage("Your session could not be refreshed. Please log in again.")
-                    .setPositiveButton("OK") { _, _ ->
-                        AuthManager.logout(this@VoiceDetectionActivity)
-                    }
-                    .setCancelable(false)
-                    .show()
-            }
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == RECORD_AUDIO_PERMISSION_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Audio permission granted", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Audio permission denied. Voice detection requires microphone access.", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            R.id.action_logout -> {
-                AuthManager.logout(this)
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
+        Log.d("VoiceDetectionActivity", "onResume called")
     }
 
     private fun startRecording() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "Microphone permission is required to record audio.", Toast.LENGTH_SHORT).show()
-            toggleRecordButton.isChecked = false
-            return
-        }
-
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * 4
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize
-        )
-
-        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("VoiceDetection", "AudioRecord initialization failed")
-            Toast.makeText(this, "Failed to start recording. Please check your microphone.", Toast.LENGTH_SHORT).show()
-            toggleRecordButton.isChecked = false
-            return
-        }
-
-        isRecording = true
-        audioRecord?.startRecording()
-        Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
-        Log.d("VoiceDetection", "Recording started with buffer size: $bufferSize")
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            val audioBuffer = ByteArray(bufferSize)
-            val recordedData = mutableListOf<Byte>()
-            var lastVoiceTime = System.currentTimeMillis()
-            var hasVoiceData = false
-
-            withContext(Dispatchers.Main) {
-                recordingIndicator.visibility = View.VISIBLE
-                recordingIndicator.startAnimation(clockTickAnimation)
-            }
-
-            while (isRecording) {
-                if (playbackActive) {
-                    audioRecord?.stop()
-                    withContext(Dispatchers.Main) {
-                        recordingIndicator.clearAnimation()
-                        recordingIndicator.visibility = View.INVISIBLE
-                    }
-                    while (playbackActive) {
-                        Thread.sleep(100)
-                    }
-                    if (isRecording) {
-                        audioRecord?.startRecording()
-                        withContext(Dispatchers.Main) {
-                            recordingIndicator.visibility = View.VISIBLE
-                            recordingIndicator.startAnimation(clockTickAnimation)
-                        }
-                    }
-                    recordedData.clear()
-                    lastVoiceTime = System.currentTimeMillis()
-                    hasVoiceData = false
-                    continue
-                }
-
-                val bytesRead = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
-                if (bytesRead > 0) {
-                    val energy = calculateEnergy(audioBuffer, bytesRead)
-                    val currentTime = System.currentTimeMillis()
-
-                    withContext(Dispatchers.Main) {
-                        audioLevelBar.progress = (energy * 100).toInt().coerceIn(0, 100)
-                    }
-
-                    if (energy > MIN_ENERGY_THRESHOLD) {
-                        recordedData.addAll(audioBuffer.take(bytesRead))
-                        lastVoiceTime = currentTime
-                        hasVoiceData = true
-                    } else if (hasVoiceData && (currentTime - lastVoiceTime) >= PAUSE_DURATION_MS) {
-                        Log.d("VoiceDetection", "2-second pause detected, processing audio, size: ${recordedData.size}")
-                        val audioData = recordedData.toByteArray()
-                        processAudioChunk(audioData)
-                        recordedData.clear()
-                        hasVoiceData = false
-                        lastVoiceTime = currentTime
-                    } else if (energy <= MIN_ENERGY_THRESHOLD && recordedData.isNotEmpty()) {
-                        recordedData.addAll(audioBuffer.take(bytesRead))
-                    }
-                }
-            }
-
-            audioRecord?.stop()
-            audioRecord?.release()
-            audioRecord = null
-            withContext(Dispatchers.Main) {
-                toggleRecordButton.isChecked = false
-                recordingIndicator.clearAnimation()
-                recordingIndicator.visibility = View.INVISIBLE
-            }
+        AudioUtils.startContinuousRecording(this, audioLevelBar, recordingIndicator) { audioData ->
+            processAudioChunk(audioData)
         }
     }
 
@@ -323,63 +110,17 @@ class VoiceDetectionActivity : AppCompatActivity() {
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
-    private fun calculateEnergy(buffer: ByteArray, bytesRead: Int): Float {
-        var sum = 0L
-        for (i in 0 until bytesRead step 2) {
-            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
-            sum += sample * sample
-        }
-        val meanSquare = sum / (bytesRead / 2)
-        return sqrt(meanSquare.toDouble()).toFloat() / 32768.0f
-    }
-
-    private fun writeWavFile(pcmData: ByteArray, outputFile: File) {
-        FileOutputStream(outputFile).use { fos ->
-            val totalAudioLen = pcmData.size
-            val totalDataLen = totalAudioLen + 36
-            val channels = 1
-            val sampleRate = SAMPLE_RATE
-            val bitsPerSample = 16
-            val byteRate = sampleRate * channels * bitsPerSample / 8
-
-            val header = ByteBuffer.allocate(44).apply {
-                order(ByteOrder.LITTLE_ENDIAN)
-                put("RIFF".toByteArray())
-                putInt(totalDataLen)
-                put("WAVE".toByteArray())
-                put("fmt ".toByteArray())
-                putInt(16)
-                putShort(1.toShort())
-                putShort(channels.toShort())
-                putInt(sampleRate)
-                putInt(byteRate)
-                putShort((channels * bitsPerSample / 8).toShort())
-                putShort(bitsPerSample.toShort())
-                put("data".toByteArray())
-                putInt(totalAudioLen)
-            }
-
-            fos.write(header.array())
-            fos.write(pcmData)
-        }
-        Log.d("VoiceDetection", "WAV file written: ${outputFile.length()} bytes")
-    }
-
     private fun processAudioChunk(audioData: ByteArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             val chunkFile = File(cacheDir, "voice_chunk_${System.currentTimeMillis()}.wav")
-            writeWavFile(audioData, chunkFile)
+            AudioUtils.writeWavFile(audioData, chunkFile)
 
             if (chunkFile.length() > 44) {
                 sendAudioToApi(chunkFile)
             } else {
-                Log.d("VoiceDetection", "Skipping empty file: ${chunkFile.length()} bytes")
+                Log.d("VoiceDetectionActivity", "Skipping empty file: ${chunkFile.length()} bytes")
             }
         }
-    }
-
-    private fun encryptAudio(audio: ByteArray): ByteArray {
-        return RetrofitClient.encryptAudio(audio, sessionKey)
     }
 
     private fun sendAudioToApi(audioFile: File) {
@@ -392,13 +133,11 @@ class VoiceDetectionActivity : AppCompatActivity() {
         val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
-        // Encrypt audio file
         val audioBytes = audioFile.readBytes()
-        val encryptedAudio = encryptAudio(audioBytes)
+        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes, sessionKey)
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
-        // Encrypt language and voice description
         val encryptedLanguage = RetrofitClient.encryptText(language, sessionKey)
         val encryptedVoice = RetrofitClient.encryptText(voiceDescription, sessionKey)
 
@@ -413,8 +152,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
             }
             try {
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
-                Log.d("VoiceDetection", "Sending API request with session key: $cleanSessionKey")
-                val response = withTimeout(30000L) { // Reduced timeout for better UX
+                Log.d("VoiceDetectionActivity", "Sending API request with session key: $cleanSessionKey")
+                val response = withTimeout(30000L) {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = encryptedLanguage,
                         file = filePart,
@@ -434,14 +173,14 @@ class VoiceDetectionActivity : AppCompatActivity() {
                             Toast.makeText(this@VoiceDetectionActivity, "Response played", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        Log.e("VoiceDetection", "Empty response from API")
+                        Log.e("VoiceDetectionActivity", "Empty response from API")
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@VoiceDetectionActivity, "No audio response received from server.", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Unknown error"
-                    Log.e("VoiceDetection", "API error: ${response.code()} - $errorBody")
+                    Log.e("VoiceDetectionActivity", "API error: ${response.code()} - $errorBody")
                     withContext(Dispatchers.Main) {
                         when (response.code()) {
                             401 -> {
@@ -455,17 +194,12 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
+                Log.e("VoiceDetectionActivity", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@VoiceDetectionActivity, "Network timeout. Please check your connection.", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: IOException) {
-                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@VoiceDetectionActivity, "Network error. Please check your internet.", Toast.LENGTH_SHORT).show()
-                }
             } catch (e: Exception) {
-                Log.e("VoiceDetection", "Speech-to-speech failed: ${e.message}", e)
+                Log.e("VoiceDetectionActivity", "Speech-to-speech failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@VoiceDetectionActivity, "An error occurred: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -508,8 +242,8 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 setOnCompletionListener {
                     cleanupMediaPlayer()
                 }
-                setOnErrorListener { mp, what, extra ->
-                    Log.e("VoiceDetection", "MediaPlayer error: $what, $extra")
+                setOnErrorListener { _, what, extra ->
+                    Log.e("VoiceDetectionActivity", "MediaPlayer error: $what, $extra")
                     runOnUiThread {
                         Toast.makeText(this@VoiceDetectionActivity, "Playback failed. Please try again.", Toast.LENGTH_SHORT).show()
                     }
@@ -518,7 +252,7 @@ class VoiceDetectionActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("VoiceDetection", "Playback failed: ${e.message}", e)
+            Log.e("VoiceDetectionActivity", "Playback failed: ${e.message}", e)
             cleanupMediaPlayer()
             runOnUiThread {
                 Toast.makeText(this@VoiceDetectionActivity, "Unable to play audio: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -537,12 +271,9 @@ class VoiceDetectionActivity : AppCompatActivity() {
         }
     }
 
-    private fun isValidBase64(str: String): Boolean {
-        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
-    }
-
     override fun onDestroy() {
         super.onDestroy()
+        Log.d("VoiceDetectionActivity", "onDestroy called")
         audioRecord?.release()
         audioRecord = null
         cleanupMediaPlayer()

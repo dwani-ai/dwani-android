@@ -23,13 +23,13 @@ import java.security.SecureRandom
 data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val username: String, val password: String)
 data class TokenResponse(val access_token: String, val refresh_token: String, val token_type: String)
-data class TranscriptionRequest(val language: String) // Language will be encrypted
+data class TranscriptionRequest(val language: String)
 data class TranscriptionResponse(val text: String)
-data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String) // Prompt will be encrypted
+data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: String)
 data class ChatResponse(val response: String)
-data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String) // Sentences will be encrypted
+data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
-data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String) // All fields encrypted
+data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String)
 data class VisualQueryResponse(val answer: String)
 
 interface ApiService {
@@ -49,28 +49,28 @@ interface ApiService {
     @POST("v1/transcribe/")
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
-        @Query("language") language: String, // Encrypted language
+        @Query("language") language: String,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): TranscriptionResponse
 
     @POST("v1/chat")
     suspend fun chat(
-        @Body chatRequest: ChatRequest, // Prompt encrypted
+        @Body chatRequest: ChatRequest,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): ChatResponse
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
-        @Query("input") input: String, // Encrypted input
+        @Query("input") input: String,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): ResponseBody
 
     @POST("v1/translate")
     suspend fun translate(
-        @Body translationRequest: TranslationRequest, // Sentences encrypted
+        @Body translationRequest: TranslationRequest,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): TranslationResponse
@@ -79,7 +79,7 @@ interface ApiService {
     @POST("v1/visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
-        @Part("data") data: RequestBody, // JSON body with query, src_lang, tgt_lang
+        @Part("data") data: RequestBody,
         @Header("Authorization") token: String,
         @Header("X-Session-Key") sessionKey: String
     ): VisualQueryResponse
@@ -87,7 +87,7 @@ interface ApiService {
     @Multipart
     @POST("v1/speech_to_speech")
     suspend fun speechToSpeech(
-        @Query("language") language: String, // Encrypted language
+        @Query("language") language: String,
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
         @Header("Authorization") token: String,
@@ -98,10 +98,13 @@ interface ApiService {
     suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
 }
 
+// TODO - Update base url - Dhwani API server
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
+    private const val BASE_URL_DEFAULT = "https://example.com/"
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
+    private var lastAuthRefreshAttempt = 0L
+    private const val AUTH_REFRESH_DEBOUNCE_MS = 5000L // 5 seconds
 
     fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
         val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
@@ -127,27 +130,39 @@ object RetrofitClient {
     private fun getOkHttpClient(context: Context): OkHttpClient {
         val authenticator = object : okhttp3.Authenticator {
             override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastAuthRefreshAttempt < AUTH_REFRESH_DEBOUNCE_MS) {
+                    Log.d("RetrofitClient", "Skipping authenticator refresh, too soon")
+                    return null
+                }
+                lastAuthRefreshAttempt = currentTime
+
                 val refreshToken = AuthManager.getRefreshToken(context) ?: return null
                 try {
                     val refreshResponse = runBlocking {
                         apiService(context).refreshToken("Bearer $refreshToken")
                     }
                     val newToken = refreshResponse.access_token
-                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
                     AuthManager.saveTokens(context, newToken, refreshResponse.refresh_token, newExpiryTime)
+                    Log.d("RetrofitClient", "Authenticator refreshed token successfully")
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")
                         .build()
                 } catch (e: Exception) {
-                    Log.e("RetrofitClient", "Token refresh failed: ${e.message}", e)
+                    Log.e("RetrofitClient", "Token refresh failed in authenticator: ${e.message}", e)
                     return null
                 }
             }
         }
 
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            setLevel(HttpLoggingInterceptor.Level.BODY)
+        }
+
         return OkHttpClient.Builder()
             .authenticator(authenticator)
-            .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

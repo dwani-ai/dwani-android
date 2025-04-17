@@ -98,8 +98,9 @@ interface ApiService {
     suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
 }
 
+// TODO - Update base url - Dhwani API server
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server.hf.space/"
+    private const val BASE_URL_DEFAULT = "https://example.com/"
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
     private var lastAuthRefreshAttempt = 0L

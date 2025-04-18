@@ -31,6 +31,7 @@ data class TranslationRequest(val sentences: List<String>, val src_lang: String,
 data class TranslationResponse(val translations: List<String>)
 data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String)
 data class VisualQueryResponse(val answer: String)
+data class ExtractTextResponse(val page_content: String) // Added for /v1/extract-text response
 
 interface ApiService {
     @POST("v1/token")
@@ -96,6 +97,15 @@ interface ApiService {
 
     @POST("v1/refresh")
     suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
+
+    @Multipart
+    @POST("v1/extract-text")
+    suspend fun extractText(
+        @Part file: MultipartBody.Part,
+        @Query("page_number") pageNumber: Int,
+        @Header("Authorization") token: String,
+        @Header("X-Session-Key") sessionKey: String
+    ): ExtractTextResponse // Added for /v1/extract-text endpoint
 }
 
 // TODO - Update base url - Dhwani API server

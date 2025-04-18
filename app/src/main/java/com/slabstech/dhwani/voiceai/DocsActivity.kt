@@ -21,7 +21,9 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -77,69 +79,70 @@ class DocsActivity : MessageActivity() {
     }
 
     private fun handleFileUpload(uri: Uri) {
-        val fileName = getFileName(uri)
-        val inputStream = contentResolver.openInputStream(uri)
-        val file = File(cacheDir, fileName)
-
-        val isImage = fileName.lowercase().endsWith(".jpg") ||
-                fileName.lowercase().endsWith(".jpeg") ||
-                fileName.lowercase().endsWith(".png")
-        val isPdf = fileName.lowercase().endsWith(".pdf")
-
-        if (isImage) {
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
             try {
-                inputStream?.use { input ->
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
+                val fileName = getFileName(uri)
+                val isImage = fileName.lowercase().endsWith(".jpg") ||
+                        fileName.lowercase().endsWith(".jpeg") ||
+                        fileName.lowercase().endsWith(".png")
+                val isPdf = fileName.lowercase().endsWith(".pdf")
+
+                withContext(Dispatchers.IO) {
+                    val file = File(cacheDir, fileName)
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(file).use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: throw Exception("Failed to open input stream")
+
+                    if (isImage) {
+                        val compressedFile = compressImage(file)
+                        val fileBytes = compressedFile.readBytes()
+                        val encryptedFileBytes = RetrofitClient.encryptAudio(fileBytes, sessionKey)
+                        val encryptedFile = File(cacheDir, "encrypted_$fileName")
+                        FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
+
+                        withContext(Dispatchers.Main) {
+                            val defaultQuery = "Describe the image"
+                            val timestamp = DateUtils.getCurrentTimestamp()
+                            val message = Message(defaultQuery, timestamp, true, uri)
+                            messageList.add(message)
+                            messageAdapter.notifyItemInserted(messageList.size - 1)
+                            scrollToLatestMessage()
+                            getVisualQueryResponse(defaultQuery, encryptedFile)
+                        }
+                    } else if (isPdf) {
+                        val fileBytes = file.readBytes()
+                        val encryptedFileBytes = RetrofitClient.encryptAudio(fileBytes, sessionKey)
+                        val encryptedFile = File(cacheDir, "encrypted_$fileName")
+                        FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
+
+                        withContext(Dispatchers.Main) {
+                            val defaultQuery = "Extracted text from PDF"
+                            val timestamp = DateUtils.getCurrentTimestamp()
+                            val message = Message(defaultQuery, timestamp, true, uri)
+                            messageList.add(message)
+                            messageAdapter.notifyItemInserted(messageList.size - 1)
+                            scrollToLatestMessage()
+                            getPdfTextExtractionResponse(encryptedFile, 1) // Default to page 1
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@DocsActivity, "Unsupported file type. Please upload an image or PDF.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
-                val compressedFile = compressImage(file)
-                val fileBytes = compressedFile.readBytes()
-                val encryptedFileBytes = RetrofitClient.encryptAudio(fileBytes, sessionKey)
-                val encryptedFile = File(cacheDir, "encrypted_$fileName")
-                FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
-
-                val defaultQuery = "Describe the image"
-                val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message(defaultQuery, timestamp, true, uri)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                scrollToLatestMessage()
-                getVisualQueryResponse(defaultQuery, encryptedFile)
             } catch (e: Exception) {
-                Log.e("DocsActivity", "Image processing failed: ${e.message}", e)
-                Toast.makeText(this, "Image processing failed: ${e.message}", Toast.LENGTH_LONG).show()
-            } finally {
-                inputStream?.close()
-            }
-        } else if (isPdf) {
-            try {
-                inputStream?.use { input ->
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
+                Log.e("DocsActivity", "File upload failed: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@DocsActivity, "File processing failed: ${e.message}", Toast.LENGTH_LONG).show()
                 }
-                val fileBytes = file.readBytes()
-                val encryptedFileBytes = RetrofitClient.encryptAudio(fileBytes, sessionKey)
-                val encryptedFile = File(cacheDir, "encrypted_$fileName")
-                FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
-
-                val defaultQuery = "Extracted text from PDF"
-                val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message(defaultQuery, timestamp, true, uri)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                scrollToLatestMessage()
-                getPdfTextExtractionResponse(encryptedFile, 1) // Default to page 1
-            } catch (e: Exception) {
-                Log.e("DocsActivity", "PDF processing failed: ${e.message}", e)
-                Toast.makeText(this, "PDF processing failed: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
-                inputStream?.close()
+                withContext(Dispatchers.Main) {
+                    progressBar.visibility = View.GONE
+                }
             }
-        } else {
-            Toast.makeText(this, "Unsupported file type. Please upload an image or PDF.", Toast.LENGTH_LONG).show()
-            inputStream?.close()
         }
     }
 
@@ -178,7 +181,6 @@ class DocsActivity : MessageActivity() {
 
             bitmap.recycle()
             return outputFile
-
         } catch (e: Exception) {
             Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
             throw e
@@ -262,7 +264,10 @@ class DocsActivity : MessageActivity() {
                         sessionKey = sessionKey
                     )
                 },
-                onError = { e -> Log.e("DocsActivity", "Visual query failed: ${e.message}", e) }
+                onError = { e ->
+                    Log.e("DocsActivity", "Visual query failed: ${e.message}", e)
+                    Toast.makeText(this@DocsActivity, "Visual query failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             )
         }
     }

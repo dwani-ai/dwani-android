@@ -109,7 +109,7 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://example.com/"
+    private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server-v2.hf.space/"
     private const val GCM_TAG_LENGTH = 16
     private const val GCM_NONCE_LENGTH = 12
     private var lastAuthRefreshAttempt = 0L

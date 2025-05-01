@@ -36,7 +36,6 @@ import java.io.FileOutputStream
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.PdfWriter
-import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
 
 class DocsActivity : MessageActivity() {
 
@@ -124,6 +123,13 @@ class DocsActivity : MessageActivity() {
                         val processedFile = processPdfPages(file, maxPages)
 
                         withContext(Dispatchers.Main) {
+                            // Show Toast with max pages
+                            Toast.makeText(
+                                this@DocsActivity,
+                                "Summarizing up to $maxPages page(s)",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
                             val defaultQuery = "Summarize the PDF"
                             val timestamp = DateUtils.getCurrentTimestamp()
                             val message = Message(defaultQuery, timestamp, true, uri)

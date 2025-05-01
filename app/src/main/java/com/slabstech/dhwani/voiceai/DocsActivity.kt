@@ -18,6 +18,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
@@ -32,6 +33,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import com.itextpdf.kernel.pdf.PdfDocument
+import com.itextpdf.kernel.pdf.PdfReader
+import com.itextpdf.kernel.pdf.PdfWriter
+import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
 
 class DocsActivity : MessageActivity() {
 
@@ -113,6 +118,11 @@ class DocsActivity : MessageActivity() {
                             getVisualQueryResponse(defaultQuery, encryptedFile)
                         }
                     } else if (isPdf) {
+                        // Get max page limit from preferences (default to 1)
+                        val prefs = PreferenceManager.getDefaultSharedPreferences(this@DocsActivity)
+                        val maxPages = prefs.getInt("pdf_max_pages", 3) // Options: 1 or 3
+                        val processedFile = processPdfPages(file, maxPages)
+
                         withContext(Dispatchers.Main) {
                             val defaultQuery = "Summarize the PDF"
                             val timestamp = DateUtils.getCurrentTimestamp()
@@ -120,7 +130,7 @@ class DocsActivity : MessageActivity() {
                             messageList.add(message)
                             messageAdapter.notifyItemInserted(messageList.size - 1)
                             scrollToLatestMessage()
-                            getPdfSummaryResponse(file)
+                            getPdfSummaryResponse(processedFile)
                         }
                     } else {
                         withContext(Dispatchers.Main) {
@@ -138,6 +148,32 @@ class DocsActivity : MessageActivity() {
                     progressBar.visibility = View.GONE
                 }
             }
+        }
+    }
+
+    private fun processPdfPages(inputFile: File, maxPages: Int): File {
+        try {
+            val reader = PdfReader(inputFile)
+            val srcDoc = PdfDocument(reader)
+            val totalPages = srcDoc.numberOfPages
+            val pagesToProcess = minOf(maxPages, totalPages)
+
+            val outputFile = File(cacheDir, "processed_${inputFile.name}")
+            val writer = PdfWriter(outputFile)
+            val destDoc = PdfDocument(writer)
+
+            for (i in 1..pagesToProcess) {
+                destDoc.addPage(srcDoc.getPage(i).copyTo(destDoc))
+            }
+
+            destDoc.close()
+            srcDoc.close()
+            reader.close()
+
+            return outputFile
+        } catch (e: Exception) {
+            Log.e("DocsActivity", "PDF page processing failed: ${e.message}", e)
+            throw e
         }
     }
 
@@ -314,7 +350,7 @@ class DocsActivity : MessageActivity() {
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 scrollToLatestMessage()
 
-                // Encrypt the summary text for TTS, as other responses do
+                // Encrypt the summary text for TTS
                 val encryptedSummaryText = RetrofitClient.encryptText(summaryText, sessionKey)
                 SpeechUtils.textToSpeech(
                     context = this@DocsActivity,

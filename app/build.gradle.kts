@@ -62,4 +62,5 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("org.json:json:20230227")
+    implementation("com.itextpdf:itext7-core:7.2.5")
 }

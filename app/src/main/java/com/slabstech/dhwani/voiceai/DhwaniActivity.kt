@@ -188,14 +188,6 @@ class DhwaniActivity : AppCompatActivity() {
                 showHistoryDialog()
                 true
             }
-            R.id.action_share -> {
-                if (transcriptionOutput.text.isNotEmpty() && transcriptionOutput.text != "Transcription will appear here...") {
-                    shareMessage(transcriptionOutput.text.toString())
-                } else {
-                    Toast.makeText(this, "No transcription to share", Toast.LENGTH_SHORT).show()
-                }
-                true
-            }
             else -> super.onOptionsItemSelected(item)
         }
     }

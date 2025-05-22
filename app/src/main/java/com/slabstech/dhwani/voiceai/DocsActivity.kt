@@ -163,11 +163,6 @@ class DocsActivity : AppCompatActivity() {
                 messageAdapter.notifyDataSetChanged()
                 true
             }
-            R.id.action_logout -> {
-                // No logout action needed without authentication
-                Toast.makeText(this, "Logout not required", Toast.LENGTH_SHORT).show()
-                true
-            }
             else -> super.onOptionsItemSelected(item)
         }
     }

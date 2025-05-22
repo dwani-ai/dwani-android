@@ -33,10 +33,6 @@ abstract class AuthenticatedActivity : AppCompatActivity() {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
-            R.id.action_logout -> {
-                Toast.makeText(this, "Logout not required", Toast.LENGTH_SHORT).show()
-                true
-            }
             else -> super.onOptionsItemSelected(item)
         }
     }

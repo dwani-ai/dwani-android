@@ -1,13 +1,11 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.animation.Animation
@@ -16,7 +14,7 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.Toast
 import android.widget.ToggleButton
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -33,11 +31,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
-class VoiceDetectionActivity : AuthenticatedActivity() {
+class VoiceDetectionActivity : AppCompatActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 101
     private val SAMPLE_RATE = 16000
@@ -45,8 +40,6 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val MIN_ENERGY_THRESHOLD = 0.04f
     private val PAUSE_DURATION_MS = 1000L
-    private val GCM_TAG_LENGTH = 16
-    private val GCM_NONCE_LENGTH = 12
 
     private lateinit var toggleRecordButton: ToggleButton
     private lateinit var audioLevelBar: ProgressBar
@@ -124,26 +117,12 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = AuthManager.getToken(this) ?: run {
-            runOnUiThread {
-                Toast.makeText(this, "Please log in to use voice detection.", Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
         val language = "kannada"
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
-        val audioBytes = audioFile.readBytes()
-        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes)
-        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
-        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
-
-        val encryptedLanguage = RetrofitClient.encryptText(language)
-        val encryptedVoice = RetrofitClient.encryptText(voiceDescription)
-
-        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
-        val voicePart = encryptedVoice.toRequestBody("text/plain".toMediaType())
+        val requestFile = audioFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+        val voicePart = voiceDescription.toRequestBody("text/plain".toMediaType())
 
         lifecycleScope.launch {
             withContext(Dispatchers.Main) {
@@ -153,9 +132,10 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
             try {
                 val response = withTimeout(30000L) {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
-                        language = encryptedLanguage,
+                        language = language,
                         file = filePart,
-                        voice = voicePart, "abcd"
+                        voice = voicePart,
+                        apiKey = RetrofitClient.getApiKey()
                     )
                 }
 
@@ -179,10 +159,6 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
                     Log.e("VoiceDetectionActivity", "API error: ${response.code()} - $errorBody")
                     withContext(Dispatchers.Main) {
                         when (response.code()) {
-                            401 -> {
-                                Toast.makeText(this@VoiceDetectionActivity, "Authentication failed. Please log in again.", Toast.LENGTH_SHORT).show()
-                                AuthManager.logout(this@VoiceDetectionActivity)
-                            }
                             400 -> Toast.makeText(this@VoiceDetectionActivity, "Invalid audio input. Please try again.", Toast.LENGTH_SHORT).show()
                             in 500..599 -> Toast.makeText(this@VoiceDetectionActivity, "Server error. Please try again later.", Toast.LENGTH_SHORT).show()
                             else -> Toast.makeText(this@VoiceDetectionActivity, "Speech-to-speech failed: Error ${response.code()}", Toast.LENGTH_SHORT).show()
@@ -201,7 +177,6 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
                 }
             } finally {
                 audioFile.delete()
-                encryptedFile.delete()
                 withContext(Dispatchers.Main) {
                     recordingIndicator.clearAnimation()
                     recordingIndicator.visibility = View.INVISIBLE
@@ -275,7 +250,5 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
         cleanupMediaPlayer()
         recordingIndicator.clearAnimation()
         playbackIndicator.clearAnimation()
-        //sessionDialog?.dismiss()
-        //sessionDialog = null
     }
 }

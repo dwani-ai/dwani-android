@@ -110,8 +110,8 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "exmplasd"
-    private const val SUMMARY_BASE_URL = "asdasde"
+    private const val BASE_URL_DEFAULT = "https://asdasd"
+    private const val SUMMARY_BASE_URL = "https://asdasd"
     private const val API_KEY = "your-hardcoded-api-key" // Replace with your actual API key
 
     // Return plain audio data

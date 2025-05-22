@@ -19,7 +19,7 @@
         android:theme="@style/Theme.DhwaniVoiceAI.Light">
 
         <activity
-            android:name=".VoiceDetectionActivity"
+            android:name=".AnswerActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -33,12 +33,12 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
-            android:parentActivityName=".VoiceDetectionActivity">
+            android:parentActivityName=".AnswerActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value=".VoiceDetectionActivity" />
+                android:value=".AnswerActivity" />
         </activity>
-        <activity android:name=".AnswerActivity" />
+        <activity android:name=".VoiceDetectionActivity" />
         <activity android:name=".TranslateActivity" />
         <activity android:name=".DocsActivity" />
 

@@ -22,11 +22,11 @@
             android:dependency="tts_enabled"/>
     </PreferenceCategory>
 
-
     <SwitchPreferenceCompat
         android:key="dark_theme"
         android:title="Dark Theme"
         android:defaultValue="false"
-        android:summary="Enable dark mode"/>
+        android:summary="Enable dark mode"
+        android:visible="false"/>
 
 </PreferenceScreen>

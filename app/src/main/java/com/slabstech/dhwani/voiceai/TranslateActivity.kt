@@ -161,7 +161,7 @@ class TranslateActivity : MessageActivity() {
                 context = this@TranslateActivity,
                 progressBar = progressBar,
                 apiCall = {
-                    val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+
                     RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
                         filePart,
                         encryptedLanguage, "abcd"
@@ -241,7 +241,7 @@ class TranslateActivity : MessageActivity() {
                 context = this@TranslateActivity,
                 progressBar = progressBar,
                 apiCall = {
-                    val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+
                     RetrofitClient.apiService(this@TranslateActivity).translate(
                         translationRequest, "abcd"
                     )
@@ -264,8 +264,7 @@ class TranslateActivity : MessageActivity() {
                             recyclerView = historyRecyclerView,
                             adapter = messageAdapter,
                             ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                            srcLang = tgtLang,
-                            sessionKey = sessionKey
+                            srcLang = tgtLang
                         )
                     }
                 },

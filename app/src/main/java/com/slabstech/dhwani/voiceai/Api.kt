@@ -110,7 +110,7 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://example.com/"
+    private const val BASE_URL_DEFAULT = "https://example.com"
     private const val SUMMARY_BASE_URL = "https://example.com"
     private const val API_KEY = "your-hardcoded-api-key" // Replace with your actual API key
 

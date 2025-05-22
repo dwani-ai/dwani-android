@@ -151,8 +151,6 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
                 recordingIndicator.startAnimation(clockTickAnimation)
             }
             try {
-                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
-                Log.d("VoiceDetectionActivity", "Sending API request with session key: $cleanSessionKey")
                 val response = withTimeout(30000L) {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = encryptedLanguage,
@@ -277,7 +275,7 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
         cleanupMediaPlayer()
         recordingIndicator.clearAnimation()
         playbackIndicator.clearAnimation()
-        sessionDialog?.dismiss()
-        sessionDialog = null
+        //sessionDialog?.dismiss()
+        //sessionDialog = null
     }
 }

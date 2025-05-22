@@ -47,14 +47,14 @@ object TokenUtils {
         if (isTokenExpired(context)) {
             Log.d(TAG, "Token expired, attempting refresh")
             try {
-                val response = RetrofitClient.apiService(context).refreshToken("Bearer $currentToken")
-                val newToken = response.access_token
-                val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
-                prefs.edit()
-                    .putString("access_token", newToken)
-                    .putLong("token_expiry_time", newExpiryTime)
-                    .apply()
-                Log.d(TAG, "Token refreshed successfully: $newToken, expiry: $newExpiryTime")
+                val response = RetrofitClient.apiService(context)
+//                val newToken = response.access_token
+//                val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 30 * 1000)
+//                prefs.edit()
+ //                   .putString("access_token", newToken)
+  //                  .putLong("token_expiry_time", newExpiryTime)
+  //                  .apply()
+  //              Log.d(TAG, "Token refreshed successfully: $newToken, expiry: $newExpiryTime")
                 return true
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh failed: ${e.message}", e)

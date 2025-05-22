@@ -3,7 +3,6 @@ package com.slabstech.dhwani.voiceai
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -19,7 +18,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
-import java.io.FileOutputStream
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.media.AudioRecord
@@ -141,7 +139,6 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun sendAudioToApi(audioFile: File) {
-        val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val supportedLanguage = when (selectedLanguage.lowercase()) {
             "hindi" -> "hindi"
@@ -150,25 +147,18 @@ class AnswerActivity : MessageActivity() {
         }
 
         val audioBytes = audioFile.readBytes()
-        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes, sessionKey)
-        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
-        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
-
-        val encryptedLanguage = RetrofitClient.encryptText(supportedLanguage, sessionKey)
-        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
+        val requestFile = audioFile.asRequestBody("application/octet-stream".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
 
         lifecycleScope.launch {
             ApiUtils.performApiCall(
                 context = this@AnswerActivity,
                 progressBar = progressBar,
                 apiCall = {
-                    val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                     RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(
                         filePart,
-                        encryptedLanguage,
-                        "Bearer $token",
-                        cleanSessionKey
+                        supportedLanguage,
+                        RetrofitClient.getApiKey()
                     )
                 },
                 onSuccess = { response ->
@@ -190,7 +180,6 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun getChatResponse(prompt: String) {
-        val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val languageMap = mapOf(
             "english" to "eng_Latn",
@@ -211,22 +200,16 @@ class AnswerActivity : MessageActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
-        val encryptedPrompt = RetrofitClient.encryptText(prompt, sessionKey)
-        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
-        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
-
-        val chatRequest = ChatRequest(encryptedPrompt, encryptedSrcLang, encryptedTgtLang)
+        val chatRequest = ChatRequest(prompt, srcLang, tgtLang)
 
         lifecycleScope.launch {
             ApiUtils.performApiCall(
                 context = this@AnswerActivity,
                 progressBar = progressBar,
                 apiCall = {
-                    val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                     RetrofitClient.apiService(this@AnswerActivity).chat(
                         chatRequest,
-                        "Bearer $token",
-                        cleanSessionKey
+                        RetrofitClient.getApiKey()
                     )
                 },
                 onSuccess = { response ->
@@ -237,17 +220,15 @@ class AnswerActivity : MessageActivity() {
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     scrollToLatestMessage()
 
-                    val encryptedAnswerText = RetrofitClient.encryptText(answerText, sessionKey)
                     SpeechUtils.textToSpeech(
                         context = this@AnswerActivity,
                         scope = lifecycleScope,
-                        text = encryptedAnswerText,
+                        text = answerText,
                         message = message,
                         recyclerView = historyRecyclerView,
                         adapter = messageAdapter,
                         ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                        srcLang = tgtLang,
-                        sessionKey = sessionKey
+                        srcLang = tgtLang
                     )
                 },
                 onError = { e -> Log.e("AnswerActivity", "Chat failed: ${e.message}", e) }

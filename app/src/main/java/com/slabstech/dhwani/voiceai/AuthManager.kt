@@ -59,8 +59,7 @@ object AuthManager {
             val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
             Log.d(TAG, "Login with session key: $cleanSessionKey")
             val response = RetrofitClient.apiService(context).login(
-                LoginRequest(encryptedEmail, encryptedToken),
-                cleanSessionKey
+                LoginRequest(encryptedEmail, encryptedToken),"abcd"
             )
             val token = response.access_token
             val refreshToken = response.refresh_token
@@ -82,8 +81,7 @@ object AuthManager {
             val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
             Log.d(TAG, "App registration with session key: $cleanSessionKey")
             val response = RetrofitClient.apiService(context).appRegister(
-                RegisterRequest(encryptedEmail, encryptedToken),
-                cleanSessionKey
+                RegisterRequest(encryptedEmail, encryptedToken), "abcd"
             )
             val token = response.access_token
             val refreshToken = response.refresh_token
@@ -118,12 +116,12 @@ object AuthManager {
             var attempts = 0
             while (attempts < MAX_RETRIES) {
                 try {
-                    val response = RetrofitClient.apiService(context).refreshToken("Bearer $refreshToken")
-                    val newToken = response.access_token
-                    val newRefreshToken = response.refresh_token
-                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
-                    saveTokens(context, newToken, newRefreshToken, newExpiryTime)
-                    Log.d(TAG, "Token refreshed successfully, new expiry: $newExpiryTime")
+                    val response = RetrofitClient.apiService(context)
+//                    val newToken = response.access_token
+//                    val newRefreshToken = response.refresh_token
+//                    val newExpiryTime = getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
+//                    saveTokens(context, newToken, newRefreshToken, newExpiryTime)
+//                    Log.d(TAG, "Token refreshed successfully, new expiry: $newExpiryTime")
                     return@withContext true
                 } catch (e: Exception) {
                     Log.e(TAG, "Token refresh attempt ${attempts + 1} failed: ${e.message}", e)

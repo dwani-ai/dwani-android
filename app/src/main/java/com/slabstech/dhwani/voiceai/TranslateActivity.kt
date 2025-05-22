@@ -148,11 +148,11 @@ class TranslateActivity : MessageActivity() {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
         val audioBytes = audioFile.readBytes()
-        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes, sessionKey)
+        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes)
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
-        val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage, sessionKey)
+        val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage)
         val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
@@ -164,9 +164,7 @@ class TranslateActivity : MessageActivity() {
                     val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                     RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
                         filePart,
-                        encryptedLanguage,
-                        "Bearer $token",
-                        cleanSessionKey
+                        encryptedLanguage, "abcd"
                     )
                 },
                 onSuccess = { response ->
@@ -232,9 +230,9 @@ class TranslateActivity : MessageActivity() {
             sentences.add(currentSentence.joinToString(" "))
         }
 
-        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it, sessionKey) }
-        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
-        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
+        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it) }
+        val encryptedSrcLang = RetrofitClient.encryptText(srcLang)
+        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang)
 
         val translationRequest = TranslationRequest(encryptedSentences, encryptedSrcLang, encryptedTgtLang)
 
@@ -245,9 +243,7 @@ class TranslateActivity : MessageActivity() {
                 apiCall = {
                     val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                     RetrofitClient.apiService(this@TranslateActivity).translate(
-                        translationRequest,
-                        "Bearer $token",
-                        cleanSessionKey
+                        translationRequest, "abcd"
                     )
                 },
                 onSuccess = { response ->
@@ -259,7 +255,7 @@ class TranslateActivity : MessageActivity() {
                     scrollToLatestMessage()
 
                     if (prefs.getBoolean("tts_enabled", false)) {
-                        val encryptedTranslatedText = RetrofitClient.encryptText(translatedText, sessionKey)
+                        val encryptedTranslatedText = RetrofitClient.encryptText(translatedText)
                         SpeechUtils.textToSpeech(
                             context = this@TranslateActivity,
                             scope = lifecycleScope,

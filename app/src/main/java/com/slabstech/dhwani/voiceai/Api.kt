@@ -1,10 +1,8 @@
 package com.slabstech.dhwani.voiceai
 
 import android.content.Context
-import android.util.Base64
 import android.util.Log
 import androidx.preference.PreferenceManager
-import kotlinx.coroutines.runBlocking
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
@@ -15,10 +13,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
-import java.security.SecureRandom
 
 data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val username: String, val password: String)
@@ -29,7 +23,7 @@ data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: S
 data class ChatResponse(val response: String)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
-data class VisualQueryRequest(val query: String, val src_lang: String, val tgt_lang: String)
+data class VisualQueryRequest(val query: String) // Simplified: src_lang and tgt_lang moved to query parameters
 data class VisualQueryResponse(val answer: String)
 data class ExtractTextResponse(val page_content: String)
 data class DocumentSummaryResponse(val pages: List<Page>, val summary: String)
@@ -39,13 +33,13 @@ interface ApiService {
     @POST("v1/token")
     suspend fun login(
         @Body loginRequest: LoginRequest,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): TokenResponse
 
     @POST("v1/app/register")
     suspend fun appRegister(
         @Body registerRequest: RegisterRequest,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): TokenResponse
 
     @Multipart
@@ -53,38 +47,37 @@ interface ApiService {
     suspend fun transcribeAudio(
         @Part audio: MultipartBody.Part,
         @Query("language") language: String,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): TranscriptionResponse
 
-    @POST("v1/chat")
+    @Headers("Accept: application/json")
+    @POST("v1/indic_chat")
     suspend fun chat(
         @Body chatRequest: ChatRequest,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): ChatResponse
 
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
         @Query("input") input: String,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): ResponseBody
 
     @POST("v1/translate")
     suspend fun translate(
         @Body translationRequest: TranslationRequest,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): TranslationResponse
 
     @Multipart
-    @POST("v1/visual_query")
+    @Headers("Accept: application/json")
+    @POST("v1/indic_visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
-        @Part("data") data: RequestBody,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Part("query") query: RequestBody,
+        @Query("src_lang") srcLang: String,
+        @Query("tgt_lang") tgtLang: String,
+        @Header("X-API-Key") apiKey: String
     ): VisualQueryResponse
 
     @Multipart
@@ -93,12 +86,8 @@ interface ApiService {
         @Query("language") language: String,
         @Part file: MultipartBody.Part,
         @Part("voice") voice: RequestBody,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): Response<ResponseBody>
-
-    @POST("v1/refresh")
-    suspend fun refreshToken(@Header("Authorization") token: String): TokenResponse
 
     @Multipart
     @POST("v1/extract-text")
@@ -106,8 +95,7 @@ interface ApiService {
         @Part file: MultipartBody.Part,
         @Query("page_number") pageNumber: Int,
         @Query("language") language: String,
-        @Header("Authorization") token: String,
-        @Header("X-Session-Key") sessionKey: String
+        @Header("X-API-Key") apiKey: String
     ): ExtractTextResponse
 
     @Multipart
@@ -116,74 +104,32 @@ interface ApiService {
         @Part file: MultipartBody.Part,
         @Part("src_lang") srcLang: RequestBody,
         @Part("tgt_lang") tgtLang: RequestBody,
-        @Part("prompt") prompt: RequestBody
+        @Part("prompt") prompt: RequestBody,
+        @Header("X-API-Key") apiKey: String
     ): DocumentSummaryResponse
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://slabstech-dhwani-server-v2.hf.space/"
-    private const val SUMMARY_BASE_URL = "https://slabstech-dhwani-server-workshop.hf.space/"
-    private const val GCM_TAG_LENGTH = 16
-    private const val GCM_NONCE_LENGTH = 12
-    private var lastAuthRefreshAttempt = 0L
-    private const val AUTH_REFRESH_DEBOUNCE_MS = 5000L // 5 seconds
+    private const val BASE_URL_DEFAULT = "https://example.com/"
+    private const val SUMMARY_BASE_URL = "https://example.com"
+    private const val API_KEY = "your-hardcoded-api-key" // Replace with your actual API key
 
-    fun encryptAudio(audio: ByteArray, sessionKey: ByteArray): ByteArray {
-        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val keySpec = SecretKeySpec(sessionKey, "AES")
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
-        val ciphertext = cipher.doFinal(audio)
-        return nonce + ciphertext
+    // Return plain audio data
+    fun encryptAudio(audio: ByteArray): ByteArray {
+        return audio // Return the input audio as-is
     }
 
-    fun encryptText(text: String, sessionKey: ByteArray): String {
-        val nonce = ByteArray(GCM_NONCE_LENGTH).apply { SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val keySpec = SecretKeySpec(sessionKey, "AES")
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
-        val ciphertext = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
-        val combined = nonce + ciphertext
-        return Base64.encodeToString(combined, Base64.NO_WRAP)
+    // Return plain text
+    fun encryptText(text: String): String {
+        return text // Return the input text as-is
     }
 
-    private fun getOkHttpClient(context: Context): OkHttpClient {
-        val authenticator = object : okhttp3.Authenticator {
-            override fun authenticate(route: okhttp3.Route?, response: okhttp3.Response): okhttp3.Request? {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastAuthRefreshAttempt < AUTH_REFRESH_DEBOUNCE_MS) {
-                    Log.d("RetrofitClient", "Skipping authenticator refresh, too soon")
-                    return null
-                }
-                lastAuthRefreshAttempt = currentTime
-
-                val refreshToken = AuthManager.getRefreshToken(context) ?: return null
-                try {
-                    val refreshResponse = runBlocking {
-                        apiService(context).refreshToken("Bearer $refreshToken")
-                    }
-                    val newToken = refreshResponse.access_token
-                    val newExpiryTime = AuthManager.getTokenExpiration(newToken) ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
-                    AuthManager.saveTokens(context, newToken, refreshResponse.refresh_token, newExpiryTime)
-                    Log.d("RetrofitClient", "Authenticator refreshed token successfully")
-                    return response.request.newBuilder()
-                        .header("Authorization", "Bearer $newToken")
-                        .build()
-                } catch (e: Exception) {
-                    Log.e("RetrofitClient", "Token refresh failed in authenticator: ${e.message}", e)
-                    return null
-                }
-            }
-        }
-
+    private fun getOkHttpClient(): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             setLevel(HttpLoggingInterceptor.Level.BODY)
         }
 
         return OkHttpClient.Builder()
-            .authenticator(authenticator)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
@@ -196,7 +142,7 @@ object RetrofitClient {
         val baseUrl = prefs.getString("api_endpoint", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
         return Retrofit.Builder()
             .baseUrl(baseUrl)
-            .client(getOkHttpClient(context))
+            .client(getOkHttpClient())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
@@ -214,5 +160,10 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
+    }
+
+    // Return hardcoded API key
+    fun getApiKey(): String {
+        return API_KEY
     }
 }

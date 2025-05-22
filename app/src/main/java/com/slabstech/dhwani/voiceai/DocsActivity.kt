@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.widget.ProgressBar
@@ -26,7 +25,6 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
 import android.view.MenuItem
-import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
@@ -55,9 +53,6 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
-    private lateinit var sessionKey: ByteArray
-    private val GCM_TAG_LENGTH = 16
-    private val GCM_NONCE_LENGTH = 12
 
     private val pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileUpload(it) }
@@ -70,27 +65,6 @@ class DocsActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_docs)
-
-        // Retrieve session key with validation
-        sessionKey = prefs.getString("session_key", null)?.let { encodedKey ->
-            try {
-                val cleanKey = encodedKey.trim()
-                if (!isValidBase64(cleanKey)) {
-                    throw IllegalArgumentException("Invalid Base64 format for session key")
-                }
-                Base64.decode(cleanKey, Base64.DEFAULT)
-            } catch (e: IllegalArgumentException) {
-                Log.e("DocsActivity", "Invalid session key format: ${e.message}")
-                null
-            }
-        } ?: run {
-            Log.e("DocsActivity", "Session key missing")
-            Toast.makeText(this, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-            AuthManager.logout(this)
-            ByteArray(0)
-        }
-
-        checkAuthentication()
 
         try {
             historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -135,17 +109,7 @@ class DocsActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }/* TODO - enable translte for v2
-                    R.id.nav_translate -> {
-                        AlertDialog.Builder(this)
-                            .setMessage("Switch to Translate?")
-                            .setPositiveButton("Yes") { _, _ ->
-                                startActivity(Intent(this, TranslateActivity::class.java))
-                            }
-                            .setNegativeButton("No", null)
-                            .show()
-                        false
-                    }*/
+                    }
                     R.id.nav_voice -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Voice?")
@@ -168,41 +132,12 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkAuthentication() {
-        lifecycleScope.launch {
-            if (!AuthManager.isAuthenticated(this@DocsActivity) || !AuthManager.refreshTokenIfNeeded(this@DocsActivity)) {
-                AuthManager.logout(this@DocsActivity)
-            }
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         if (currentTheme != isDarkTheme) {
             currentTheme = isDarkTheme
             recreate()
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setMessage("Checking session...")
-            .setCancelable(false)
-            .create()
-        dialog.show()
-
-        lifecycleScope.launch {
-            val tokenValid = AuthManager.refreshTokenIfNeeded(this@DocsActivity)
-            if (tokenValid) {
-                dialog.dismiss()
-            } else {
-                dialog.dismiss()
-                AlertDialog.Builder(this@DocsActivity)
-                    .setTitle("Session Expired")
-                    .setMessage("Your session could not be refreshed. Please log in again.")
-                    .setPositiveButton("OK") { _, _ -> AuthManager.logout(this@DocsActivity) }
-                    .setCancelable(false)
-                    .show()
-            }
         }
     }
 
@@ -229,7 +164,8 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_logout -> {
-                AuthManager.logout(this)
+                // No logout action needed without authentication
+                Toast.makeText(this, "Logout not required", Toast.LENGTH_SHORT).show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -275,7 +211,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun encryptFile(file: ByteArray): ByteArray {
-        return RetrofitClient.encryptAudio(file, sessionKey) // Reusing audio encryption for files
+        return RetrofitClient.encryptAudio(file) // Reusing audio encryption (returns plain data)
     }
 
     private fun handleFileUpload(uri: Uri) {
@@ -310,11 +246,10 @@ class DocsActivity : AppCompatActivity() {
             }
         }
 
-        // Encrypt file
+        // No encryption needed
         val fileBytes = file.readBytes()
-        val encryptedFileBytes = encryptFile(fileBytes)
-        val encryptedFile = File(cacheDir, "encrypted_$fileName")
-        FileOutputStream(encryptedFile).use { it.write(encryptedFileBytes) }
+        val processedFile = File(cacheDir, "processed_$fileName")
+        FileOutputStream(processedFile).use { it.write(fileBytes) }
 
         val defaultQuery = "Describe the image"
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -323,7 +258,7 @@ class DocsActivity : AppCompatActivity() {
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
-        getVisualQueryResponse(defaultQuery, encryptedFile)
+        getVisualQueryResponse(defaultQuery, processedFile)
     }
 
     private fun compressImage(inputFile: File): File {
@@ -392,7 +327,6 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun getVisualQueryResponse(query: String, file: File) {
-        val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val languageMap = mapOf(
             "english" to "eng_Latn",
@@ -413,34 +347,20 @@ class DocsActivity : AppCompatActivity() {
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
-        // Encrypt query and language fields
-        val encryptedQuery = RetrofitClient.encryptText(query, sessionKey)
-        val encryptedSrcLang = RetrofitClient.encryptText(srcLang, sessionKey)
-        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang, sessionKey)
-        Log.d("DocsActivity", "Encrypted fields - query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
-
-        // Create JSON body
-        val visualQueryRequest = VisualQueryRequest(
-            query = encryptedQuery,
-            src_lang = encryptedSrcLang,
-            tgt_lang = encryptedTgtLang
-        )
-        val jsonBody = Gson().toJson(visualQueryRequest)
-        Log.d("DocsActivity", "Sending visual query JSON: $jsonBody")
-        val dataBody = jsonBody.toRequestBody("application/json".toMediaType())
-
         lifecycleScope.launch {
             progressBar.visibility = View.VISIBLE
             try {
-                val requestFile = file.asRequestBody("application/octet-stream".toMediaType())
+                val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                val queryPart = query.toRequestBody("text/plain".toMediaType())
                 Log.d("DocsActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
+                Log.d("DocsActivity", "Query: $query, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,
-                    dataBody,
-                    "Bearer $token",
-                    cleanSessionKey
+                    queryPart,
+                    srcLang,
+                    tgtLang,
+                    RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -450,18 +370,16 @@ class DocsActivity : AppCompatActivity() {
                 historyRecyclerView.requestLayout()
                 scrollToLatestMessage()
 
-                // Encrypt text for TTS
-                val encryptedAnswerText = RetrofitClient.encryptText(answerText, sessionKey)
+                // Use plain text for TTS
                 SpeechUtils.textToSpeech(
                     context = this@DocsActivity,
                     scope = lifecycleScope,
-                    text = encryptedAnswerText,
+                    text = answerText,
                     message = message,
                     recyclerView = historyRecyclerView,
                     adapter = messageAdapter,
                     ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang,
-                    sessionKey = sessionKey
+                    srcLang = tgtLang
                 )
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Visual query failed: ${e.message}", e)
@@ -471,10 +389,6 @@ class DocsActivity : AppCompatActivity() {
                 file.delete()
             }
         }
-    }
-
-    private fun isValidBase64(str: String): Boolean {
-        return str.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     override fun onRequestPermissionsResult(

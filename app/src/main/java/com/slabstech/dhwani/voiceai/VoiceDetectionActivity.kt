@@ -134,12 +134,12 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
         val voiceDescription = "Anu speaks with a high pitch at a normal pace in a clear environment."
 
         val audioBytes = audioFile.readBytes()
-        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes, sessionKey)
+        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes)
         val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
-        val encryptedLanguage = RetrofitClient.encryptText(language, sessionKey)
-        val encryptedVoice = RetrofitClient.encryptText(voiceDescription, sessionKey)
+        val encryptedLanguage = RetrofitClient.encryptText(language)
+        val encryptedVoice = RetrofitClient.encryptText(voiceDescription)
 
         val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
@@ -157,9 +157,7 @@ class VoiceDetectionActivity : AuthenticatedActivity() {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = encryptedLanguage,
                         file = filePart,
-                        voice = voicePart,
-                        token = "Bearer $token",
-                        sessionKey = cleanSessionKey
+                        voice = voicePart, "abcd"
                     )
                 }
 

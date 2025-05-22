@@ -89,9 +89,7 @@ object SpeechUtils {
                 Log.d("SpeechUtils", "Calling TTS API with input length: ${truncatedText.length}")
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.apiService(context).textToSpeech(
-                        input = truncatedText,
-                        token = "Bearer $token",
-                        sessionKey = cleanSessionKey
+                        input = truncatedText, "acbcd"
                     )
                 }
                 val audioBytes = withContext(Dispatchers.IO) {
@@ -172,16 +170,14 @@ object SpeechUtils {
         val token = AuthManager.getToken(context) ?: return
 
         // Encrypt sentences
-        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it, sessionKey) }
+        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it) }
         val translationRequest = TranslationRequest(encryptedSentences, srcLang, tgtLang)
 
         scope.launch {
             try {
                 val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(context).translate(
-                    translationRequest,
-                    "Bearer $token",
-                    cleanSessionKey
+                    translationRequest, "abcd"
                 )
                 val translatedText = response.translations.joinToString("\n")
                 onSuccess(translatedText)

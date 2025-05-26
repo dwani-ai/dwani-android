@@ -323,6 +323,15 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "german" to "deu_Latn",
+        )
+/*
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
@@ -339,6 +348,8 @@ class DocsActivity : AppCompatActivity() {
             "russian" to "rus_Cyrl",
             "polish" to "pol_Latn"
         )
+
+ */
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 

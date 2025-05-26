@@ -110,9 +110,9 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://asdasd"
-    private const val SUMMARY_BASE_URL = "https://asdasd"
-    private const val API_KEY = "your-hardcoded-api-key" // Replace with your actual API key
+    private const val BASE_URL_DEFAULT = "https://rcsmple.xom"
+    private const val SUMMARY_BASE_URL = "https://asdadfsdf"
+    private const val API_KEY = "sdfhy" // Replace with your actual API key
 
     // Return plain audio data
     fun encryptAudio(audio: ByteArray): ByteArray {

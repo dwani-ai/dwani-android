@@ -30,9 +30,15 @@ object SpeechUtils {
     private val europeanLanguages = setOf(
         "eng_Latn", // English
         "deu_Latn", // German
+    )
+/*
+    private val europeanLanguages = setOf(
+        "eng_Latn", // English
+        "deu_Latn", // German
         "fra_Latn", // French
         "nld_Latn"  // Dutch
     )
+    */
 
     private val indianLanguages = setOf(
         "hin_Deva",  // Hindi

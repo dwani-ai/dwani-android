@@ -2,14 +2,12 @@ package com.slabstech.dhwani.voiceai.utils
 
 import android.content.Context
 import android.media.MediaPlayer
-import android.util.Base64
 import android.util.Log
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
-import com.slabstech.dhwani.voiceai.AuthManager
 import com.slabstech.dhwani.voiceai.Message
 import com.slabstech.dhwani.voiceai.MessageAdapter
 import com.slabstech.dhwani.voiceai.R
@@ -32,9 +30,15 @@ object SpeechUtils {
     private val europeanLanguages = setOf(
         "eng_Latn", // English
         "deu_Latn", // German
+    )
+/*
+    private val europeanLanguages = setOf(
+        "eng_Latn", // English
+        "deu_Latn", // German
         "fra_Latn", // French
         "nld_Latn"  // Dutch
     )
+    */
 
     private val indianLanguages = setOf(
         "hin_Deva",  // Hindi
@@ -47,35 +51,23 @@ object SpeechUtils {
     fun textToSpeech(
         context: Context,
         scope: LifecycleCoroutineScope,
-        text: String, // Encrypted text (Base64-encoded AES-GCM)
+        text: String, // Plain text
         message: Message,
         recyclerView: RecyclerView,
         adapter: MessageAdapter,
         ttsProgressBarVisibility: (Boolean) -> Unit,
-        srcLang: String? = null,
-        sessionKey: ByteArray? = null // Required for X-Session-Key header
+        srcLang: String? = null
     ) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean("tts_enabled", false)) {
             Log.d("SpeechUtils", "TTS disabled in preferences")
             return
         }
-        val token = AuthManager.getToken(context)
-        if (token == null) {
-            Log.e("SpeechUtils", "Authentication token is null")
-            Toast.makeText(context, "Authentication error. Please log in again.", Toast.LENGTH_LONG).show()
-            return
-        }
-        if (sessionKey == null) {
-            Log.e("SpeechUtils", "Session key is null, cannot proceed with TTS")
-            Toast.makeText(context, "Session error. Please log in again.", Toast.LENGTH_LONG).show()
-            return
-        }
 
-        // Truncate encrypted text to avoid exceeding server limits (rough estimate)
-        val truncatedText = if (text.length > MAX_TTS_INPUT_LENGTH * 2) { // Encrypted text is larger than plain text
-            Log.w("SpeechUtils", "Encrypted input text too long (${text.length} chars), truncating")
-            text.substring(0, MAX_TTS_INPUT_LENGTH * 2)
+        // Truncate text to avoid exceeding server limits
+        val truncatedText = if (text.length > MAX_TTS_INPUT_LENGTH) {
+            Log.w("SpeechUtils", "Input text too long (${text.length} chars), truncating")
+            text.substring(0, MAX_TTS_INPUT_LENGTH)
         } else {
             text
         }
@@ -85,11 +77,11 @@ object SpeechUtils {
         scope.launch {
             ttsProgressBarVisibility(true)
             try {
-                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 Log.d("SpeechUtils", "Calling TTS API with input length: ${truncatedText.length}")
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.apiService(context).textToSpeech(
-                        input = truncatedText, "acbcd"
+                        input = truncatedText,
+                        apiKey = RetrofitClient.getApiKey()
                     )
                 }
                 val audioBytes = withContext(Dispatchers.IO) {
@@ -163,21 +155,16 @@ object SpeechUtils {
         sentences: List<String>,
         srcLang: String,
         tgtLang: String,
-        sessionKey: ByteArray,
         onSuccess: (String) -> Unit,
         onError: (Exception) -> Unit
     ) {
-        val token = AuthManager.getToken(context) ?: return
-
-        // Encrypt sentences
-        val encryptedSentences = sentences.map { RetrofitClient.encryptText(it) }
-        val translationRequest = TranslationRequest(encryptedSentences, srcLang, tgtLang)
+        val translationRequest = TranslationRequest(sentences, srcLang, tgtLang)
 
         scope.launch {
             try {
-                val cleanSessionKey = Base64.encodeToString(sessionKey, Base64.NO_WRAP)
                 val response = RetrofitClient.apiService(context).translate(
-                    translationRequest, "abcd"
+                    translationRequest,
+                    RetrofitClient.getApiKey()
                 )
                 val translatedText = response.translations.joinToString("\n")
                 onSuccess(translatedText)

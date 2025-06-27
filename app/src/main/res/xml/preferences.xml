@@ -22,21 +22,4 @@
             android:dependency="tts_enabled"/>
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="API Endpoint">
-
-        <EditTextPreference
-            android:key="api_endpoint"
-            android:title="API Endpoint"
-            android:defaultValue="https://dwani-dwani-server.hf.space/"
-            android:inputType="textUri"
-            android:summary="Set the URL for the API"/>
-
-    </PreferenceCategory>
-
-    <SwitchPreferenceCompat
-        android:key="dark_theme"
-        android:title="Dark Theme"
-        android:defaultValue="false"
-        android:summary="Enable dark mode"/>
-
 </PreferenceScreen>

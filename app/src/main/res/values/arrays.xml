@@ -2,9 +2,10 @@
 <resources>
     <string-array name="language_names">
         <item>Kannada</item>
-
         <item>Hindi</item>
         <item>Tamil</item>
+        <item>English</item>
+        <item>German</item>
         <!--
 <item>Malayalam</item>
 <item>Telugu</item>
@@ -23,6 +24,8 @@
         <item>kannada</item>
         <item>hindi</item>
         <item>tamil</item>
+        <item>english</item>
+        <item>german</item>
         <!--
 <item>malayalam</item>
 <item>telugu</item>
@@ -42,6 +45,7 @@
         <item>Hindi</item>
         <item>Kannada</item>
         <item>Tamil</item>
+        <item>German</item>
         <!--
 <item>Malayalam</item>
 <item>Telugu</item>
@@ -60,6 +64,7 @@
         <item>hin_Deva</item>
         <item>kan_Knda</item>
         <item>tam_Taml</item>
+        <item>deu_Latn</item>
         <!--
 <item>tam_Taml</item>
 <item>mal_Mlym</item>

@@ -19,9 +19,4 @@
         android:title="Target Language"
         app:actionLayout="@layout/spinner_action_view"
         app:showAsAction="always"/>
-    <item
-        android:id="@+id/action_logout"
-        android:title="Logout"
-        android:icon="@android:drawable/ic_menu_close_clear_cancel"
-        app:showAsAction="ifRoom"/>
 </menu>

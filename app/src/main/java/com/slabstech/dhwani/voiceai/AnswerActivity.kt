@@ -143,6 +143,9 @@ class AnswerActivity : MessageActivity() {
         val supportedLanguage = when (selectedLanguage.lowercase()) {
             "hindi" -> "hindi"
             "tamil" -> "tamil"
+            "english" -> "english"
+            "german" -> "german"
+
             else -> "kannada"
         }
 
@@ -186,17 +189,25 @@ class AnswerActivity : MessageActivity() {
             "hindi" to "hin_Deva",
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu",
-            "german" to "deu_Latn",
-            "french" to "fra_Latn",
-            "dutch" to "nld_Latn",
-            "spanish" to "spa_Latn",
-            "italian" to "ita_Latn",
-            "portuguese" to "por_Latn",
-            "russian" to "rus_Cyrl",
-            "polish" to "pol_Latn"
+            "german" to "deu_Latn"
         )
+            /*
+            val languageMap = mapOf(
+                "english" to "eng_Latn",
+                "hindi" to "hin_Deva",
+                "kannada" to "kan_Knda",
+                "tamil" to "tam_Taml",
+                "malayalam" to "mal_Mlym",
+                "telugu" to "tel_Telu",
+                "german" to "deu_Latn",
+                "french" to "fra_Latn",
+                "dutch" to "nld_Latn",
+                "spanish" to "spa_Latn",
+                "italian" to "ita_Latn",
+                "portuguese" to "por_Latn",
+                "russian" to "rus_Cyrl",
+                "polish" to "pol_Latn"
+            )*/
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 

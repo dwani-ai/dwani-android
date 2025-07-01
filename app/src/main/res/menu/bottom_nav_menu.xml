@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_vision"
+        android:title="vision"/>
     <item
         android:id="@+id/nav_voice"
-        android:title="dwani.ai"
-        android:visible="false" />
+        android:title="voice"/>
     <item
         android:id="@+id/nav_answer"
         android:icon="@android:drawable/ic_menu_help"

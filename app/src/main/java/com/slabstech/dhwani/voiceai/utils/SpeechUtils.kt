@@ -56,7 +56,7 @@ object SpeechUtils {
         recyclerView: RecyclerView,
         adapter: MessageAdapter,
         ttsProgressBarVisibility: (Boolean) -> Unit,
-        srcLang: String? = null
+        srcLang: String
     ) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean("tts_enabled", false)) {
@@ -76,12 +76,22 @@ object SpeechUtils {
 
         scope.launch {
             ttsProgressBarVisibility(true)
+            val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+            val supportedLanguage = when (selectedLanguage.lowercase()) {
+                "hindi" -> "hindi"
+                "tamil" -> "tamil"
+                "english" -> "english"
+                "german" -> "german"
+
+                else -> "kannada"
+            }
             try {
                 Log.d("SpeechUtils", "Calling TTS API with input length: ${truncatedText.length}")
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.apiService(context).textToSpeech(
                         input = truncatedText,
-                        apiKey = RetrofitClient.getApiKey()
+                        apiKey = RetrofitClient.getApiKey(),
+                        language = supportedLanguage
                     )
                 }
                 val audioBytes = withContext(Dispatchers.IO) {

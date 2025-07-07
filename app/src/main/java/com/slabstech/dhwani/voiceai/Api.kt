@@ -60,6 +60,7 @@ interface ApiService {
     @POST("v1/audio/speech")
     suspend fun textToSpeech(
         @Query("input") input: String,
+        @Query("language") language: String,
         @Header("X-API-Key") apiKey: String
     ): ResponseBody
 
@@ -110,8 +111,8 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://test.dwani.ai"
-    private const val SUMMARY_BASE_URL = "https://test.dwani.ai"
+    private const val BASE_URL_DEFAULT = "https://mobile.ai-123"
+    private const val SUMMARY_BASE_URL = "https://mobile.ai-123"
     private const val API_KEY = "sdfhy" // Replace with your actual API key
 
     // Return plain audio data

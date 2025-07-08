@@ -1,7 +1,6 @@
 package com.slabstech.dhwani.voiceai
 
 import android.content.Context
-import android.util.Log
 import androidx.preference.PreferenceManager
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -23,11 +22,12 @@ data class ChatRequest(val prompt: String, val src_lang: String, val tgt_lang: S
 data class ChatResponse(val response: String)
 data class TranslationRequest(val sentences: List<String>, val src_lang: String, val tgt_lang: String)
 data class TranslationResponse(val translations: List<String>)
-data class VisualQueryRequest(val query: String) // Simplified: src_lang and tgt_lang moved to query parameters
+data class VisualQueryRequest(val query: String)
 data class VisualQueryResponse(val answer: String)
 data class ExtractTextResponse(val page_content: String)
 data class DocumentSummaryResponse(val pages: List<Page>, val summary: String)
 data class Page(val page_number: Int, val page_text: String)
+data class PdfSummaryResponse(val summary: String)
 
 interface ApiService {
     @POST("v1/token")
@@ -107,19 +107,27 @@ interface ApiService {
         @Part("prompt") prompt: RequestBody,
         @Header("X-API-Key") apiKey: String
     ): DocumentSummaryResponse
+
+    @Multipart
+    @POST("v1/summarize-pdf")
+    suspend fun summarizePdf(
+        @Part file: MultipartBody.Part,
+        @Part("page_number") pageNumber: RequestBody,
+        //@Part("src_lang") srcLang: RequestBody,
+        //@Part("tgt_lang") tgtLang: RequestBody,
+        //@Part("model") model: RequestBody,
+        @Header("X-API-Key") apiKey: String
+    ): PdfSummaryResponse
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://mobile-ap"
-    private const val SUMMARY_BASE_URL = "https://mobile-ap"
+    private const val BASE_URL_DEFAULT = "https://mobile-api"
     private const val API_KEY = "sdfhy" // Replace with your actual API key
 
-    // Return plain audio data
     fun encryptAudio(audio: ByteArray): ByteArray {
         return audio // Return the input audio as-is
     }
 
-    // Return plain text
     fun encryptText(text: String): String {
         return text // Return the input text as-is
     }
@@ -148,21 +156,6 @@ object RetrofitClient {
             .create(ApiService::class.java)
     }
 
-    fun summaryApiService(): ApiService {
-        return Retrofit.Builder()
-            .baseUrl(SUMMARY_BASE_URL)
-            .client(OkHttpClient.Builder()
-                .addInterceptor(HttpLoggingInterceptor().apply { setLevel(HttpLoggingInterceptor.Level.BODY) })
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .build())
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-    }
-
-    // Return hardcoded API key
     fun getApiKey(): String {
         return API_KEY
     }

@@ -266,7 +266,7 @@ class DocsActivity : AppCompatActivity() {
                     }
                     val compressedFile = compressImage(file)
                     query = "Describe the image"
-                    processFileUpload(compressedFile, uri, query, "image/png")
+                    processFileUpload(compressedFile, uri, query, "image/png", false)
                 }
                 "pdf" -> {
                     if (!fileName.lowercase().endsWith(".pdf")) {
@@ -274,7 +274,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Summarize the PDF content"
-                    processFileUpload(file, uri, query, "application/pdf")
+                    processFileUpload(file, uri, query, "application/pdf", true)
                 }
                 "audio" -> {
                     if (!isAudioFile(fileName)) {
@@ -282,7 +282,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Transcribe the audio"
-                    processFileUpload(file, uri, query, "audio/mpeg")
+                    processFileUpload(file, uri, query, "audio/mpeg", false)
                 }
                 else -> {
                     Toast.makeText(this, "Invalid file type", Toast.LENGTH_SHORT).show()
@@ -311,14 +311,18 @@ class DocsActivity : AppCompatActivity() {
                 lowerCaseName.endsWith(".m4a")
     }
 
-    private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String) {
+    private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String, isPdf: Boolean) {
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         val message = Message(query, timestamp, true, uri)
         messageList.add(message)
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
-        getVisualQueryResponse(query, file, mediaType)
+        if (isPdf) {
+            getPdfSummaryResponse(file, uri)
+        } else {
+            getVisualQueryResponse(query, file, mediaType)
+        }
     }
 
     private fun compressImage(inputFile: File): File {
@@ -356,7 +360,6 @@ class DocsActivity : AppCompatActivity() {
 
             bitmap.recycle()
             return outputFile
-
         } catch (e: Exception) {
             Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
             throw e
@@ -388,7 +391,6 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File, mediaType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
@@ -396,7 +398,6 @@ class DocsActivity : AppCompatActivity() {
             "tamil" to "tam_Taml",
             "german" to "deu_Latn"
         )
-
         val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
@@ -443,6 +444,67 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
+    private fun getPdfSummaryResponse(file: File, uri: Uri) {
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "german" to "deu_Latn"
+        )
+        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val tgtLang = srcLang
+        val pageNumber = "1" // Summarize only the first page
+        val model = "gemma3" // Adjust model name as per API requirements
+
+        lifecycleScope.launch {
+            progressBar.visibility = View.VISIBLE
+            try {
+                val requestFile = file.asRequestBody("application/pdf".toMediaType())
+                val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                val pageNumberPart = pageNumber.toRequestBody("text/plain".toMediaType())
+                //val srcLangPart = srcLang.toRequestBody("text/plain".toMediaType())
+                //val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
+                //val modelPart = model.toRequestBody("text/plain".toMediaType())
+                Log.d("DocsActivity", "PDF file - name: ${file.name}, size: ${file.length()}")
+                Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang, model: $model")
+                val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
+                    filePart,
+                    pageNumberPart,
+                    //srcLangPart,
+                    //tgtLangPart,
+                    //modelPart,
+                    RetrofitClient.getApiKey()
+                )
+                val summaryText = response.summary
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Summary: $summaryText", timestamp, false)
+                messageList.add(message)
+                messageAdapter.notifyItemInserted(messageList.size - 1)
+                historyRecyclerView.requestLayout()
+                scrollToLatestMessage()
+
+                SpeechUtils.textToSpeech(
+                    context = this@DocsActivity,
+                    scope = lifecycleScope,
+                    text = summaryText,
+                    message = message,
+                    recyclerView = historyRecyclerView,
+                    adapter = messageAdapter,
+                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
+                    srcLang = tgtLang
+                )
+            } catch (e: Exception) {
+                Log.e("DocsActivity", "PDF summary failed: ${e.message}", e)
+                Toast.makeText(this@DocsActivity, "PDF summary error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                progressBar.visibility = View.GONE
+                file.delete()
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -450,7 +512,8 @@ class DocsActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == READ_STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
             showFileTypeSelectionDialog()
         }
     }

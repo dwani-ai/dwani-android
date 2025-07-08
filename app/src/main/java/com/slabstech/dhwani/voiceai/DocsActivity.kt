@@ -259,6 +259,18 @@ class DocsActivity : AppCompatActivity() {
         return lowerCaseLanguage
     }
 
+
+    private fun validateLanguageImage(language: String): String {
+        val languageMap = ALLOWED_LANGUAGES.associateBy { it.lowercase() }
+        val lowerCaseLanguage = language.lowercase()
+        if (lowerCaseLanguage !in languageMap) {
+            throw IllegalArgumentException(
+                "Unsupported language: $language. Supported languages: $ALLOWED_LANGUAGES"
+            )
+        }
+        return lowerCaseLanguage
+    }
+
     private fun handleFileUpload(uri: Uri, fileType: String?) {
         val fileName = getFileName(uri)
         val inputStream = contentResolver.openInputStream(uri)
@@ -484,12 +496,22 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getVisualQueryResponse(query: String, file: File, mediaType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val srcLang = try {
-            validateLanguage(selectedLanguage)
+
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "german" to "deu_Latn",
+        )
+        val srcLang: String =   languageMap[selectedLanguage].toString();
+
+        /*val srcLang = try {
+            validateLanguageImage(selectedLanguage)
         } catch (e: IllegalArgumentException) {
             Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
             return
-        }
+        }*/
         val tgtLang = srcLang
 
         lifecycleScope.launch(Dispatchers.IO) {

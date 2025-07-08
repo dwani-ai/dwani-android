@@ -86,7 +86,6 @@ interface ApiService {
     suspend fun speechToSpeech(
         @Query("language") language: String,
         @Part file: MultipartBody.Part,
-        @Part("voice") voice: RequestBody,
         @Header("X-API-Key") apiKey: String
     ): Response<ResponseBody>
 
@@ -111,8 +110,8 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://mobile.ai-123"
-    private const val SUMMARY_BASE_URL = "https://mobile.ai-123"
+    private const val BASE_URL_DEFAULT = "https://mobile-ap"
+    private const val SUMMARY_BASE_URL = "https://mobile-ap"
     private const val API_KEY = "sdfhy" // Replace with your actual API key
 
     // Return plain audio data

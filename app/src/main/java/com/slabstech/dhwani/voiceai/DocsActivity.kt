@@ -7,13 +7,19 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.ProgressBar
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -22,24 +28,18 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import androidx.appcompat.widget.Toolbar
-import android.view.Menu
-import android.view.MenuItem
-import java.text.SimpleDateFormat
-import java.util.*
-import android.net.Uri
-import android.provider.OpenableColumns
-import androidx.activity.result.contract.ActivityResultContracts
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 class DocsActivity : AppCompatActivity() {
 
@@ -53,6 +53,13 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+
+    // List of allowed languages
+    private val ALLOWED_LANGUAGES = listOf(
+        "Assamese", "Bengali", "Gujarati", "Hindi", "Kannada",
+        "Malayalam", "Marathi", "Odia", "Punjabi", "Tamil",
+        "Telugu", "English", "German"
+    )
 
     private var selectedFileType: String? = null
 
@@ -241,8 +248,15 @@ class DocsActivity : AppCompatActivity() {
         Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
-    private fun encryptFile(file: ByteArray): ByteArray {
-        return RetrofitClient.encryptAudio(file) // Reusing audio encryption (returns plain data)
+    private fun validateLanguage(language: String): String {
+        val languageMap = ALLOWED_LANGUAGES.associateBy { it.lowercase() }
+        val lowerCaseLanguage = language.lowercase()
+        if (lowerCaseLanguage !in languageMap) {
+            throw IllegalArgumentException(
+                "Unsupported language: $language. Supported languages: $ALLOWED_LANGUAGES"
+            )
+        }
+        return lowerCaseLanguage
     }
 
     private fun handleFileUpload(uri: Uri, fileType: String?) {
@@ -320,6 +334,8 @@ class DocsActivity : AppCompatActivity() {
         scrollToLatestMessage()
         if (isPdf) {
             getPdfSummaryResponse(file, uri)
+        } else if (mediaType == "audio/mpeg") {
+            getTranscriptionResponse(file, uri)
         } else {
             getVisualQueryResponse(query, file, mediaType)
         }
@@ -389,20 +405,95 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
+    private fun getTranscriptionResponse(file: File, uri: Uri) {
+        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        val apiLanguage = try {
+            validateLanguage(selectedLanguage)
+        } catch (e: IllegalArgumentException) {
+            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            runOnUiThread { progressBar.visibility = View.VISIBLE }
+            try {
+                // Encrypt audio if necessary (currently a no-op in RetrofitClient)
+                val audioBytes = file.readBytes()
+                val encryptedAudio = RetrofitClient.encryptAudio(audioBytes)
+                val tempFile = File(cacheDir, "encrypted_${file.name}")
+                tempFile.writeBytes(encryptedAudio)
+
+                // Prepare multipart request
+                val requestFile = tempFile.asRequestBody("audio/mpeg".toMediaType())
+                val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
+
+                Log.d("DocsActivity", "Transcribing audio - name: ${file.name}, size: ${file.length()}, language: $apiLanguage")
+
+                // Call the transcription API
+                val response = RetrofitClient.apiService(this@DocsActivity).transcribeAudio(
+                    audio = filePart,
+                    language = apiLanguage,
+                    apiKey = RetrofitClient.getApiKey()
+                )
+
+                // Process response
+                val transcriptionText = response.text
+                if (transcriptionText.isBlank()) {
+                    throw Exception("Empty transcription received")
+                }
+
+                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val message = Message("Transcription: $transcriptionText", timestamp, false, uri)
+
+                runOnUiThread {
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    historyRecyclerView.requestLayout()
+                    scrollToLatestMessage()
+
+                    // Optional: Convert transcription to speech
+                    SpeechUtils.textToSpeech(
+                        context = this@DocsActivity,
+                        scope = lifecycleScope,
+                        text = transcriptionText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible ->
+                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                        },
+                        srcLang = apiLanguage
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("DocsActivity", "Transcription failed: ${e.message}", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this@DocsActivity,
+                        "Transcription error: ${e.message ?: "Unknown error"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } finally {
+                runOnUiThread { progressBar.visibility = View.GONE }
+                file.delete()
+                //if (tempFile.exists()) tempFile.delete()
+            }
+        }
+    }
+
     private fun getVisualQueryResponse(query: String, file: File, mediaType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "german" to "deu_Latn"
-        )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang = try {
+            validateLanguage(selectedLanguage)
+        } catch (e: IllegalArgumentException) {
+            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            return
+        }
         val tgtLang = srcLang
 
-        lifecycleScope.launch {
-            progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
+            runOnUiThread { progressBar.visibility = View.VISIBLE }
             try {
                 val requestFile = file.asRequestBody(mediaType.toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
@@ -419,26 +510,32 @@ class DocsActivity : AppCompatActivity() {
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Answer: $answerText", timestamp, false)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                historyRecyclerView.requestLayout()
-                scrollToLatestMessage()
+                runOnUiThread {
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    historyRecyclerView.requestLayout()
+                    scrollToLatestMessage()
 
-                SpeechUtils.textToSpeech(
-                    context = this@DocsActivity,
-                    scope = lifecycleScope,
-                    text = answerText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang
-                )
+                    SpeechUtils.textToSpeech(
+                        context = this@DocsActivity,
+                        scope = lifecycleScope,
+                        text = answerText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible ->
+                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                        },
+                        srcLang = tgtLang
+                    )
+                }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Query failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "Query error: ${e.message}", Toast.LENGTH_LONG).show()
+                runOnUiThread {
+                    Toast.makeText(this@DocsActivity, "Query error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             } finally {
-                progressBar.visibility = View.GONE
+                runOnUiThread { progressBar.visibility = View.GONE }
                 file.delete()
             }
         }
@@ -446,60 +543,57 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getPdfSummaryResponse(file: File, uri: Uri) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "german" to "deu_Latn"
-        )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang = try {
+            validateLanguage(selectedLanguage)
+        } catch (e: IllegalArgumentException) {
+            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            return
+        }
         val tgtLang = srcLang
         val pageNumber = "1" // Summarize only the first page
-        val model = "gemma3" // Adjust model name as per API requirements
 
-        lifecycleScope.launch {
-            progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
+            runOnUiThread { progressBar.visibility = View.VISIBLE }
             try {
                 val requestFile = file.asRequestBody("application/pdf".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val pageNumberPart = pageNumber.toRequestBody("text/plain".toMediaType())
-                //val srcLangPart = srcLang.toRequestBody("text/plain".toMediaType())
-                //val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
-                //val modelPart = model.toRequestBody("text/plain".toMediaType())
                 Log.d("DocsActivity", "PDF file - name: ${file.name}, size: ${file.length()}")
-                Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang, model: $model")
+                Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
                     filePart,
                     pageNumberPart,
-                    //srcLangPart,
-                    //tgtLangPart,
-                    //modelPart,
                     RetrofitClient.getApiKey()
                 )
                 val summaryText = response.summary
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Summary: $summaryText", timestamp, false)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                historyRecyclerView.requestLayout()
-                scrollToLatestMessage()
+                val message = Message("Summary: $summaryText", timestamp, false, uri)
+                runOnUiThread {
+                    messageList.add(message)
+                    messageAdapter.notifyItemInserted(messageList.size - 1)
+                    historyRecyclerView.requestLayout()
+                    scrollToLatestMessage()
 
-                SpeechUtils.textToSpeech(
-                    context = this@DocsActivity,
-                    scope = lifecycleScope,
-                    text = summaryText,
-                    message = message,
-                    recyclerView = historyRecyclerView,
-                    adapter = messageAdapter,
-                    ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                    srcLang = tgtLang
-                )
+                    SpeechUtils.textToSpeech(
+                        context = this@DocsActivity,
+                        scope = lifecycleScope,
+                        text = summaryText,
+                        message = message,
+                        recyclerView = historyRecyclerView,
+                        adapter = messageAdapter,
+                        ttsProgressBarVisibility = { visible ->
+                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                        },
+                        srcLang = tgtLang
+                    )
+                }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "PDF summary failed: ${e.message}", e)
-                Toast.makeText(this@DocsActivity, "PDF summary error: ${e.message}", Toast.LENGTH_LONG).show()
+                runOnUiThread {
+                    Toast.makeText(this@DocsActivity, "PDF summary error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             } finally {
-                progressBar.visibility = View.GONE
+                runOnUiThread { progressBar.visibility = View.GONE }
                 file.delete()
             }
         }

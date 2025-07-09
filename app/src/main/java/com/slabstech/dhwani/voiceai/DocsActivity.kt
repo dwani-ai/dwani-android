@@ -506,12 +506,7 @@ class DocsActivity : AppCompatActivity() {
         )
         val srcLang: String =   languageMap[selectedLanguage].toString();
 
-        /*val srcLang = try {
-            validateLanguageImage(selectedLanguage)
-        } catch (e: IllegalArgumentException) {
-            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
-            return
-        }*/
+
         val tgtLang = srcLang
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -565,29 +560,46 @@ class DocsActivity : AppCompatActivity() {
 
     private fun getPdfSummaryResponse(file: File, uri: Uri) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val srcLang = try {
+        val validSrcLang = try {
             validateLanguage(selectedLanguage)
         } catch (e: IllegalArgumentException) {
             Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
             return
         }
+
+
+        val languageMap = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "german" to "deu_Latn",
+        )
+        val srcLang: String =   languageMap[validSrcLang].toString();
         val tgtLang = srcLang
         val pageNumber = "1" // Summarize only the first page
-
+        val model="gemma3"
         lifecycleScope.launch(Dispatchers.IO) {
             runOnUiThread { progressBar.visibility = View.VISIBLE }
             try {
                 val requestFile = file.asRequestBody("application/pdf".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val pageNumberPart = pageNumber.toRequestBody("text/plain".toMediaType())
+                val srcLangPart = srcLang.toRequestBody("text/plain".toMediaType())
+                val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
+                val modelPart = model.toRequestBody("text/plain".toMediaType())
+
                 Log.d("DocsActivity", "PDF file - name: ${file.name}, size: ${file.length()}")
                 Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
                     filePart,
                     pageNumberPart,
+                    srcLang = srcLangPart,
+                    tgtLang = tgtLangPart,
+                    model = modelPart,
                     RetrofitClient.getApiKey()
                 )
-                val summaryText = response.summary
+                val summaryText = response.translated_summary
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 val message = Message("Summary: $summaryText", timestamp, false, uri)
                 runOnUiThread {

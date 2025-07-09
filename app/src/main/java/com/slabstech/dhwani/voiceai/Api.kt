@@ -27,7 +27,7 @@ data class VisualQueryResponse(val answer: String)
 data class ExtractTextResponse(val page_content: String)
 data class DocumentSummaryResponse(val pages: List<Page>, val summary: String)
 data class Page(val page_number: Int, val page_text: String)
-data class PdfSummaryResponse(val summary: String)
+data class PdfSummaryResponse(val translated_summary: String)
 
 interface ApiService {
     @POST("v1/token")
@@ -109,20 +109,20 @@ interface ApiService {
     ): DocumentSummaryResponse
 
     @Multipart
-    @POST("v1/summarize-pdf")
+    @POST("v1/indic-summarize-pdf")
     suspend fun summarizePdf(
         @Part file: MultipartBody.Part,
         @Part("page_number") pageNumber: RequestBody,
-        //@Part("src_lang") srcLang: RequestBody,
-        //@Part("tgt_lang") tgtLang: RequestBody,
-        //@Part("model") model: RequestBody,
+        @Part("src_lang") srcLang: RequestBody,
+        @Part("tgt_lang") tgtLang: RequestBody,
+        @Part("model") model: RequestBody,
         @Header("X-API-Key") apiKey: String
     ): PdfSummaryResponse
 }
 
 object RetrofitClient {
     private const val BASE_URL_DEFAULT = "https://mobile-api"
-    private const val API_KEY = "sdfhy" // Replace with your actual API key
+    private const val API_KEY = "" // Replace with your actual API key
 
     fun encryptAudio(audio: ByteArray): ByteArray {
         return audio // Return the input audio as-is

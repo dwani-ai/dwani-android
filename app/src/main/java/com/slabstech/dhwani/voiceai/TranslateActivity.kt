@@ -2,8 +2,8 @@ package com.slabstech.dhwani.voiceai
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Spinner
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -26,7 +27,6 @@ import android.animation.PropertyValuesHolder
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.text.Editable
-import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
@@ -34,7 +34,6 @@ class TranslateActivity : MessageActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private var audioRecord: AudioRecord? = null
-    private var audioFile: File? = null
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
@@ -60,7 +59,7 @@ class TranslateActivity : MessageActivity() {
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
         ttsProgressBar = findViewById(R.id.ttsProgressBar)
-        targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
+        //targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
 
         setSupportActionBar(toolbar)
         setupMessageList()
@@ -101,7 +100,7 @@ class TranslateActivity : MessageActivity() {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
                 val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Input: $query", timestamp, true)
+                val message = Message("Input: $query", timestamp, true, null, null)
                 messageList.add(message)
                 messageAdapter.notifyItemInserted(messageList.size - 1)
                 scrollToLatestMessage()
@@ -134,7 +133,11 @@ class TranslateActivity : MessageActivity() {
 
     private fun startRecording() {
         AudioUtils.startPushToTalkRecording(this, audioLevelBar, { animateFabRecordingStart() }) { file ->
-            file?.let { sendAudioToApi(it) }
+            file?.let {
+                // Convert File to Uri for Message
+                val uri = Uri.fromFile(it)
+                sendAudioToApi(it, uri)
+            }
         }
     }
 
@@ -143,7 +146,7 @@ class TranslateActivity : MessageActivity() {
         animateFabRecordingStop()
     }
 
-    private fun sendAudioToApi(audioFile: File) {
+    private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
         val token = AuthManager.getToken(this) ?: return
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
@@ -153,7 +156,7 @@ class TranslateActivity : MessageActivity() {
         FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
 
         val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage)
-        val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaType())
+        val requestFile = encryptedFile.asRequestBody("audio/mpeg".toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
 
         lifecycleScope.launch {
@@ -161,17 +164,17 @@ class TranslateActivity : MessageActivity() {
                 context = this@TranslateActivity,
                 progressBar = progressBar,
                 apiCall = {
-
                     RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
                         filePart,
-                        encryptedLanguage, "abcd"
+                        encryptedLanguage,
+                        RetrofitClient.getApiKey()
                     )
                 },
                 onSuccess = { response ->
                     val voiceQueryText = response.text
                     val timestamp = DateUtils.getCurrentTimestamp()
                     if (voiceQueryText.isNotEmpty()) {
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true)
+                        val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
                         scrollToLatestMessage()
@@ -179,8 +182,14 @@ class TranslateActivity : MessageActivity() {
                     } else {
                         Toast.makeText(this@TranslateActivity, "Voice Query empty", Toast.LENGTH_SHORT).show()
                     }
+                    audioFile.delete()
+                    encryptedFile.delete()
                 },
-                onError = { e -> Log.e("TranslateActivity", "Transcription failed: ${e.message}", e) }
+                onError = { e ->
+                    Log.e("TranslateActivity", "Transcription failed: ${e.message}", e)
+                    audioFile.delete()
+                    encryptedFile.delete()
+                }
             )
         }
     }
@@ -241,15 +250,15 @@ class TranslateActivity : MessageActivity() {
                 context = this@TranslateActivity,
                 progressBar = progressBar,
                 apiCall = {
-
                     RetrofitClient.apiService(this@TranslateActivity).translate(
-                        translationRequest, "abcd"
+                        translationRequest,
+                        RetrofitClient.getApiKey()
                     )
                 },
                 onSuccess = { response ->
                     val translatedText = response.translations.joinToString("\n")
                     val timestamp = DateUtils.getCurrentTimestamp()
-                    val message = Message("Translation: $translatedText", timestamp, false)
+                    val message = Message("Translation: $translatedText", timestamp, false, null, null)
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     scrollToLatestMessage()
@@ -315,9 +324,7 @@ class TranslateActivity : MessageActivity() {
         Log.d("TranslateActivity", "onDestroy called")
         mediaPlayer?.release()
         mediaPlayer = null
-        messageList.forEach { it.audioFile?.delete() }
         audioRecord?.release()
         audioRecord = null
-        audioFile?.delete()
     }
 }

@@ -1,5 +1,6 @@
 package com.slabstech.dhwani.voiceai
 
+import android.content.Context
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
@@ -11,20 +12,18 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
-import java.io.File
 
 data class Message(
     val text: String,
     val timestamp: String,
     val isQuery: Boolean,
-    val imageUri: Uri? = null,
-    var audioFile: File? = null
+    val uri: Uri? = null,
+    val fileType: String? = null // e.g., "image", "audio", "pdf"
 )
-
 class MessageAdapter(
     val messages: MutableList<Message>,
     private val onLongClick: (Int) -> Unit,
-    private val onClick: (Message, ImageButton) -> Unit // Handles both thumbnail and audio clicks
+    private val onClick: (Message, ImageButton) -> Unit
 ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -42,9 +41,13 @@ class MessageAdapter(
 
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
         val message = messages[position]
+        val context = holder.itemView.context
+
+        // Set message text and timestamp
         holder.messageText.text = message.text
         holder.timestampText.text = message.timestamp
 
+        // Align message based on isQuery
         val layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -52,10 +55,11 @@ class MessageAdapter(
         layoutParams.gravity = if (message.isQuery) android.view.Gravity.END else android.view.Gravity.START
         holder.messageContainer.layoutParams = layoutParams
 
-        val backgroundDrawable = ContextCompat.getDrawable(holder.itemView.context, R.drawable.whatsapp_message_bubble)?.mutate()
+        // Set message bubble styling
+        val backgroundDrawable = ContextCompat.getDrawable(context, R.drawable.whatsapp_message_bubble)?.mutate()
         backgroundDrawable?.let {
             it.setTint(ContextCompat.getColor(
-                holder.itemView.context,
+                context,
                 if (message.isQuery) R.color.whatsapp_message_out else R.color.whatsapp_message_in
             ))
             holder.messageText.background = it
@@ -63,31 +67,63 @@ class MessageAdapter(
             holder.messageText.setPadding(16, 16, 16, 16)
         }
 
-        holder.messageText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_text))
-        holder.timestampText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_timestamp))
+        holder.messageText.setTextColor(ContextCompat.getColor(context, R.color.whatsapp_text))
+        holder.timestampText.setTextColor(ContextCompat.getColor(context, R.color.whatsapp_timestamp))
 
-        if (message.isQuery && message.imageUri != null) {
-            holder.thumbnailImage.visibility = View.VISIBLE
-            holder.thumbnailImage.setImageURI(message.imageUri)
-            holder.thumbnailImage.setOnClickListener {
-                onClick(message, holder.audioControlButton)
+        // Handle file icon/thumbnail
+        holder.thumbnailImage.visibility = View.GONE
+        holder.audioControlButton.visibility = View.GONE
+
+        message.uri?.let { uri ->
+            val thumbnailLayoutParams = holder.thumbnailImage.layoutParams
+            when (message.fileType) {
+                "image" -> {
+                    // Display image thumbnail
+                    thumbnailLayoutParams.width = (100 * context.resources.displayMetrics.density).toInt()
+                    thumbnailLayoutParams.height = (100 * context.resources.displayMetrics.density).toInt()
+                    holder.thumbnailImage.layoutParams = thumbnailLayoutParams
+                    holder.thumbnailImage.setImageURI(uri)
+                    holder.thumbnailImage.scaleType = ImageView.ScaleType.CENTER_CROP
+                    holder.thumbnailImage.visibility = View.VISIBLE
+                    holder.thumbnailImage.setOnClickListener {
+                        onClick(message, holder.audioControlButton)
+                    }
+                }
+                "audio" -> {
+                    // Display audio icon
+                    thumbnailLayoutParams.width = (24 * context.resources.displayMetrics.density).toInt()
+                    thumbnailLayoutParams.height = (24 * context.resources.displayMetrics.density).toInt()
+                    holder.thumbnailImage.layoutParams = thumbnailLayoutParams
+                    holder.thumbnailImage.setImageDrawable(
+                        ContextCompat.getDrawable(context, R.drawable.ic_audio)
+                    )
+                    holder.thumbnailImage.scaleType = ImageView.ScaleType.FIT_CENTER
+                    holder.thumbnailImage.visibility = View.VISIBLE
+                    holder.audioControlButton.visibility = View.VISIBLE
+                    holder.audioControlButton.setColorFilter(ContextCompat.getColor(context, R.color.whatsapp_green))
+                    holder.audioControlButton.setOnClickListener {
+                        onClick(message, holder.audioControlButton)
+                    }
+                }
+                "pdf" -> {
+                    // Display PDF icon
+                    thumbnailLayoutParams.width = (24 * context.resources.displayMetrics.density).toInt()
+                    thumbnailLayoutParams.height = (24 * context.resources.displayMetrics.density).toInt()
+                    holder.thumbnailImage.layoutParams = thumbnailLayoutParams
+                    holder.thumbnailImage.setImageDrawable(
+                        ContextCompat.getDrawable(context, R.drawable.ic_pdf)
+                    )
+                    holder.thumbnailImage.scaleType = ImageView.ScaleType.FIT_CENTER
+                    holder.thumbnailImage.visibility = View.VISIBLE
+                }
             }
-            holder.audioControlButton.visibility = View.GONE
-        } else if (!message.isQuery && message.audioFile != null) {
-            holder.thumbnailImage.visibility = View.GONE
-            holder.audioControlButton.visibility = View.VISIBLE
-            holder.audioControlButton.setOnClickListener {
-                onClick(message, holder.audioControlButton)
-            }
-            holder.audioControlButton.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.whatsapp_green))
-        } else {
-            holder.thumbnailImage.visibility = View.GONE
-            holder.audioControlButton.visibility = View.GONE
         }
 
-        val animation = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+        // Apply fade-in animation
+        val animation = AnimationUtils.loadAnimation(context, android.R.anim.fade_in)
         holder.itemView.startAnimation(animation)
 
+        // Handle long click for options dialog
         holder.itemView.setOnLongClickListener {
             onLongClick(position)
             true

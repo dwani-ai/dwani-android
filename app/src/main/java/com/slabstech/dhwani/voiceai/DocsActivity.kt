@@ -259,7 +259,6 @@ class DocsActivity : AppCompatActivity() {
         return lowerCaseLanguage
     }
 
-
     private fun validateLanguageImage(language: String): String {
         val languageMap = ALLOWED_LANGUAGES.associateBy { it.lowercase() }
         val lowerCaseLanguage = language.lowercase()
@@ -292,7 +291,7 @@ class DocsActivity : AppCompatActivity() {
                     }
                     val compressedFile = compressImage(file)
                     query = "Describe the image"
-                    processFileUpload(compressedFile, uri, query, "image/png", false)
+                    processFileUpload(compressedFile, uri, query, "image/png", false, "image")
                 }
                 "pdf" -> {
                     if (!fileName.lowercase().endsWith(".pdf")) {
@@ -300,7 +299,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Summarize the PDF content"
-                    processFileUpload(file, uri, query, "application/pdf", true)
+                    processFileUpload(file, uri, query, "application/pdf", true, "pdf")
                 }
                 "audio" -> {
                     if (!isAudioFile(fileName)) {
@@ -308,7 +307,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Transcribe the audio"
-                    processFileUpload(file, uri, query, "audio/mpeg", false)
+                    processFileUpload(file, uri, query, "audio/mpeg", false, "audio")
                 }
                 else -> {
                     Toast.makeText(this, "Invalid file type", Toast.LENGTH_SHORT).show()
@@ -337,19 +336,19 @@ class DocsActivity : AppCompatActivity() {
                 lowerCaseName.endsWith(".m4a")
     }
 
-    private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String, isPdf: Boolean) {
+    private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String, isPdf: Boolean, fileType: String) {
         val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message(query, timestamp, true, uri)
+        val message = Message(query, timestamp, true, uri, fileType)
         messageList.add(message)
         messageAdapter.notifyItemInserted(messageList.size - 1)
         historyRecyclerView.requestLayout()
         scrollToLatestMessage()
         if (isPdf) {
-            getPdfSummaryResponse(file, uri)
+            getPdfSummaryResponse(file, uri, fileType)
         } else if (mediaType == "audio/mpeg") {
-            getTranscriptionResponse(file, uri)
+            getTranscriptionResponse(file, uri, fileType)
         } else {
-            getVisualQueryResponse(query, file, mediaType)
+            getVisualQueryResponse(query, file, mediaType, fileType)
         }
     }
 
@@ -417,7 +416,7 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun getTranscriptionResponse(file: File, uri: Uri) {
+    private fun getTranscriptionResponse(file: File, uri: Uri, fileType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val apiLanguage = try {
             validateLanguage(selectedLanguage)
@@ -455,7 +454,7 @@ class DocsActivity : AppCompatActivity() {
                 }
 
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Transcription: $transcriptionText", timestamp, false, uri)
+                val message = Message("Transcription: $transcriptionText", timestamp, false, uri, fileType)
 
                 runOnUiThread {
                     messageList.add(message)
@@ -494,7 +493,7 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun getVisualQueryResponse(query: String, file: File, mediaType: String) {
+    private fun getVisualQueryResponse(query: String, file: File, mediaType: String, fileType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
 
         val languageMap = mapOf(
@@ -502,11 +501,9 @@ class DocsActivity : AppCompatActivity() {
             "hindi" to "hin_Deva",
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
-            "german" to "deu_Latn",
+            "german" to "deu_Latn"
         )
-        val srcLang: String =   languageMap[selectedLanguage].toString();
-
-
+        val srcLang: String = languageMap[selectedLanguage].toString()
         val tgtLang = srcLang
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -526,7 +523,7 @@ class DocsActivity : AppCompatActivity() {
                 )
                 val answerText = response.answer
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Answer: $answerText", timestamp, false)
+                val message = Message("Answer: $answerText", timestamp, false, null, null) // No uri/fileType for response
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
@@ -558,7 +555,7 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-    private fun getPdfSummaryResponse(file: File, uri: Uri) {
+    private fun getPdfSummaryResponse(file: File, uri: Uri, fileType: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val validSrcLang = try {
             validateLanguage(selectedLanguage)
@@ -567,18 +564,18 @@ class DocsActivity : AppCompatActivity() {
             return
         }
 
-
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
-            "german" to "deu_Latn",
+            "german" to "deu_Latn"
         )
-        val srcLang: String =   languageMap[validSrcLang].toString();
+        val srcLang: String = languageMap[validSrcLang].toString()
         val tgtLang = srcLang
         val pageNumber = "1" // Summarize only the first page
-        val model="gemma3"
+        val model = "gemma3"
+
         lifecycleScope.launch(Dispatchers.IO) {
             runOnUiThread { progressBar.visibility = View.VISIBLE }
             try {
@@ -597,11 +594,12 @@ class DocsActivity : AppCompatActivity() {
                     srcLang = srcLangPart,
                     tgtLang = tgtLangPart,
                     model = modelPart,
-                    RetrofitClient.getApiKey()
+                    apiKey = RetrofitClient.getApiKey()
                 )
                 val summaryText = response.translated_summary
                 val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Summary: $summaryText", timestamp, false, uri)
+                val message = Message("Summary: $summaryText", timestamp, false, uri, fileType)
+
                 runOnUiThread {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)

@@ -5,20 +5,20 @@ plugins {
 
 android {
     namespace = "com.slabstech.dhwani.voiceai"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.slabstech.dhwani.voiceai"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 75
+        targetSdk = 36
+        versionCode = 76
         versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

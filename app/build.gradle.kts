@@ -9,16 +9,16 @@ android {
 
     defaultConfig {
         applicationId = "com.slabstech.dhwani.voiceai"
-        minSdk = 26
+        minSdk = 27
         targetSdk = 36
-        versionCode = 76
+        versionCode = 77
         versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

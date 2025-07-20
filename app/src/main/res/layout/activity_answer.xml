@@ -2,20 +2,23 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/coordinatorLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/whatsapp_background">
+    android:background="@color/whatsapp_background"
+    android:fitsSystemWindows="false">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/whatsapp_green">
+
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="answer"
+            app:title="Answer"
             app:titleTextColor="#FFFFFF"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
     </com.google.android.material.appbar.AppBarLayout>
@@ -38,9 +41,9 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         android:layout_marginTop="24dp"
-        android:layout_marginBottom="120dp"
-        android:padding="8dp"
-        android:clipToPadding="false"/>
+        android:layout_marginBottom="0dp"
+    android:padding="8dp"
+    android:clipToPadding="false"/>
 
     <LinearLayout
         android:id="@+id/bottomBar"
@@ -53,7 +56,7 @@
         android:padding="8dp"
         app:layout_dodgeInsetEdges="bottom"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="56dp">
+        android:layout_marginBottom="0dp"> <!-- ✅ Insets will handle spacing -->
 
         <EditText
             android:id="@+id/textQueryInput"
@@ -112,4 +115,5 @@
         android:visibility="gone"
         android:layout_gravity="center"
         android:indeterminateTint="@color/whatsapp_green"/>
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

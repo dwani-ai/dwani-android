@@ -523,7 +523,8 @@ class DocsActivity : AppCompatActivity() {
             "hindi" to "hin_Deva",
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
-            "german" to "deu_Latn"
+            "german" to "deu_Latn",
+            "telugu" to "tel_Telu"
         )
         val srcLang: String = languageMap[selectedLanguage].toString()
         val tgtLang = srcLang
@@ -591,7 +592,8 @@ class DocsActivity : AppCompatActivity() {
             "hindi" to "hin_Deva",
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
-            "german" to "deu_Latn"
+            "german" to "deu_Latn",
+            "telugu" to "tel_Telu"
         )
         val srcLang: String = languageMap[validSrcLang].toString()
         val tgtLang = srcLang

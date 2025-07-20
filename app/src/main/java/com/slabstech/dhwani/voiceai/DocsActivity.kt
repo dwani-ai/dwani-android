@@ -22,6 +22,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -71,8 +74,16 @@ class DocsActivity : AppCompatActivity() {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
         setTheme(if (isDarkTheme) R.style.Theme_DhwaniVoiceAI_Dark else R.style.Theme_DhwaniVoiceAI_Light)
         currentTheme = isDarkTheme
-
         super.onCreate(savedInstanceState)
+
+        // Enable edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Optional: style the system bars to match your theme
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController?.isAppearanceLightStatusBars = !isDarkTheme
+        windowInsetsController?.isAppearanceLightNavigationBars = !isDarkTheme
+
         setContentView(R.layout.activity_docs)
 
         try {
@@ -83,11 +94,19 @@ class DocsActivity : AppCompatActivity() {
             toolbar = findViewById(R.id.toolbar)
             val bottomNavigation = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
+            // Handle insets manually (top and bottom padding)
+            ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout)) { view, insets ->
+                val systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                view.setPadding(0, systemInsets.top, 0, systemInsets.bottom)
+                insets
+            }
+
             setSupportActionBar(toolbar)
 
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
             }, { _, _ -> }) // No audio playback in DocsActivity
+
             historyRecyclerView.apply {
                 layoutManager = LinearLayoutManager(this@DocsActivity)
                 adapter = messageAdapter
@@ -95,7 +114,8 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
@@ -143,6 +163,7 @@ class DocsActivity : AppCompatActivity() {
                     else -> false
                 }
             }
+
             bottomNavigation.selectedItemId = R.id.nav_docs
         } catch (e: Exception) {
             Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
@@ -150,6 +171,7 @@ class DocsActivity : AppCompatActivity() {
             finish()
         }
     }
+
 
     private fun showFileTypeSelectionDialog() {
         val options = arrayOf("Image", "PDF", "Audio")

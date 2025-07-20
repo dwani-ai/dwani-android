@@ -2,6 +2,7 @@ package com.slabstech.dhwani.voiceai.utils
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.net.Uri
 import android.util.Log
 import android.widget.ImageButton
 import android.widget.Toast
@@ -31,14 +32,6 @@ object SpeechUtils {
         "eng_Latn", // English
         "deu_Latn", // German
     )
-/*
-    private val europeanLanguages = setOf(
-        "eng_Latn", // English
-        "deu_Latn", // German
-        "fra_Latn", // French
-        "nld_Latn"  // Dutch
-    )
-    */
 
     private val indianLanguages = setOf(
         "hin_Deva",  // Hindi
@@ -82,7 +75,6 @@ object SpeechUtils {
                 "tamil" -> "tamil"
                 "english" -> "english"
                 "german" -> "german"
-
                 else -> "kannada"
             }
             try {
@@ -99,23 +91,32 @@ object SpeechUtils {
                 }
                 if (audioBytes.isNotEmpty()) {
                     val audioFile = File(context.cacheDir, "temp_tts_audio_${System.currentTimeMillis()}.mp3")
+                    val audioUri = Uri.fromFile(audioFile)
                     withContext(Dispatchers.IO) {
                         FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
                     }
                     if (audioFile.exists() && audioFile.length() > 0) {
-                        message.audioFile = audioFile
+                        // Create a new Message with uri and fileType
+                        val updatedMessage = Message(
+                            text = message.text,
+                            timestamp = message.timestamp,
+                            isQuery = message.isQuery,
+                            uri = audioUri,
+                            fileType = "audio"
+                        )
                         withContext(Dispatchers.Main) {
                             val messageIndex = adapter.messages.indexOf(message)
                             if (messageIndex != -1) {
+                                adapter.messages[messageIndex] = updatedMessage
                                 adapter.notifyItemChanged(messageIndex)
                             }
                             if (autoPlay) {
                                 playAudio(
                                     context = context,
-                                    audioFile = audioFile,
+                                    audioUri = audioUri,
                                     recyclerView = recyclerView,
                                     adapter = adapter,
-                                    message = message,
+                                    message = updatedMessage,
                                     playIconResId = android.R.drawable.ic_media_play,
                                     stopIconResId = R.drawable.ic_media_stop
                                 )
@@ -187,7 +188,7 @@ object SpeechUtils {
 
     fun playAudio(
         context: Context,
-        audioFile: File,
+        audioUri: Uri,
         recyclerView: RecyclerView,
         adapter: MessageAdapter,
         message: Message,
@@ -195,16 +196,11 @@ object SpeechUtils {
         stopIconResId: Int = R.drawable.ic_media_stop,
         mediaPlayer: MediaPlayer? = null
     ) {
-        if (!audioFile.exists()) {
-            Toast.makeText(context, "Audio file doesn't exist", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         val player = mediaPlayer ?: MediaPlayer()
         try {
             player.apply {
                 reset()
-                setDataSource(audioFile.absolutePath)
+                setDataSource(context, audioUri)
                 prepare()
                 start()
                 val messageIndex = adapter.messages.indexOf(message)
@@ -248,7 +244,7 @@ object SpeechUtils {
         stopIconResId: Int = R.drawable.ic_media_stop
     ): MediaPlayer? {
         var currentPlayer = mediaPlayer
-        message.audioFile?.let { audioFile ->
+        if (message.fileType == "audio" && message.uri != null) {
             if (currentPlayer?.isPlaying == true) {
                 currentPlayer.stop()
                 currentPlayer.release()
@@ -258,7 +254,7 @@ object SpeechUtils {
                 currentPlayer = MediaPlayer()
                 playAudio(
                     context = context,
-                    audioFile = audioFile,
+                    audioUri = message.uri,
                     recyclerView = recyclerView,
                     adapter = adapter,
                     message = message,
@@ -268,6 +264,8 @@ object SpeechUtils {
                 )
                 button.setImageResource(stopIconResId)
             }
+        } else {
+            Toast.makeText(context, "No audio available for playback", Toast.LENGTH_SHORT).show()
         }
         return currentPlayer
     }

@@ -1,4 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+
     <!-- Base application theme (Light) -->
     <style name="Theme.DhwaniVoiceAI.Light" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">#2196F3</item>
@@ -6,18 +8,32 @@
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">#4CAF50</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="android:statusBarColor">#1976D2</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowBackground">#F5F5F5</item>
+        <!-- REMOVE or comment out any font/roboto or custom font line unless font files are present -->
+        <!-- <item name="android:fontFamily">@font/roboto</item> -->
+        <!-- <item name="android:textColor">#212121</item> -->
     </style>
 
     <!-- Dark theme -->
-    <style name="Theme.DhwaniVoiceAI.Dark" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.DhwaniVoiceAI.Dark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">#2196F3</item>
         <item name="colorPrimaryVariant">#1976D2</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">#4CAF50</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="android:statusBarColor">#121212</item>
-        <item name="android:windowBackground">#212121</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowBackground">#121212</item>
+        <!-- <item name="android:fontFamily">@font/roboto</item> -->
+        <!-- <item name="android:textColor">#FFFFFF</item> -->
     </style>
+
 </resources>

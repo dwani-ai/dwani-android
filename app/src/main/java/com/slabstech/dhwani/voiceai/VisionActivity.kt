@@ -134,7 +134,6 @@ class VisionActivity : AppCompatActivity() {
                     RetrofitClient.apiService(this@VisionActivity).speechToSpeech(
                         language = language,
                         file = filePart,
-                        voice = voicePart,
                         apiKey = RetrofitClient.getApiKey()
                     )
                 }

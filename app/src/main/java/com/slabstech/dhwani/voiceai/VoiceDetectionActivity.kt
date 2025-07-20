@@ -134,7 +134,6 @@ class VoiceDetectionActivity : AppCompatActivity() {
                     RetrofitClient.apiService(this@VoiceDetectionActivity).speechToSpeech(
                         language = language,
                         file = filePart,
-                        voice = voicePart,
                         apiKey = RetrofitClient.getApiKey()
                     )
                 }

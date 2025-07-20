@@ -6,6 +6,8 @@
         <item>Tamil</item>
         <item>English</item>
         <item>German</item>
+        <item>Telugu</item>
+
         <!--
 <item>Malayalam</item>
 <item>Telugu</item>
@@ -26,6 +28,8 @@
         <item>tamil</item>
         <item>english</item>
         <item>german</item>
+        <item>telugu</item>
+
         <!--
 <item>malayalam</item>
 <item>telugu</item>
@@ -46,6 +50,7 @@
         <item>Kannada</item>
         <item>Tamil</item>
         <item>German</item>
+        <item>Telugu</item>
         <!--
 <item>Malayalam</item>
 <item>Telugu</item>
@@ -65,6 +70,8 @@
         <item>kan_Knda</item>
         <item>tam_Taml</item>
         <item>deu_Latn</item>
+        <item>tel_Telu</item>
+
         <!--
 <item>tam_Taml</item>
 <item>mal_Mlym</item>

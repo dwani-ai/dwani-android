@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "com.slabstech.dhwani.voiceai"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.slabstech.dhwani.voiceai"
-        minSdk = 26
-        targetSdk = 35
-        versionCode = 73
+        minSdk = 27
+        targetSdk = 36
+        versionCode = 77
         versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

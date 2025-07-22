@@ -9,24 +9,30 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.*
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.ProgressBar
+import android.widget.Toast
+import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.media.AudioRecord
 import android.media.MediaPlayer
-import android.text.Editable
-import androidx.appcompat.widget.Toolbar
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.core.view.*
-import androidx.lifecycle.lifecycleScope
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
-import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 
 class AnswerActivity : MessageActivity() {
 
@@ -51,9 +57,6 @@ class AnswerActivity : MessageActivity() {
 
         setContentView(R.layout.activity_answer)
 
-        // Handle Insets (gesture nav & cutouts)
-        setupInsets()
-
         // View initializations
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
         audioLevelBar = findViewById(R.id.audioLevelBar)
@@ -67,6 +70,7 @@ class AnswerActivity : MessageActivity() {
         setSupportActionBar(toolbar)
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
+        setupInsets()
 
         // Preferences initialization
         if (!prefs.contains(AUTO_PLAY_KEY)) {
@@ -78,8 +82,11 @@ class AnswerActivity : MessageActivity() {
 
         // Audio permission check
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                arrayOf(Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_PERMISSION_CODE)
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                RECORD_AUDIO_PERMISSION_CODE
+            )
         }
 
         // Push to Talk Record Toggle
@@ -128,6 +135,7 @@ class AnswerActivity : MessageActivity() {
         // Scroll RecyclerView and show keyboard when EditText gains focus
         textQueryInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
+                updateRecyclerViewPadding() // Ensure padding is updated for keyboard
                 scrollToLatestMessage()
                 showKeyboard()
             }
@@ -135,7 +143,7 @@ class AnswerActivity : MessageActivity() {
 
         // Toggle between TTS and Send button
         textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
+            override fun afterTextChanged(s: android.text.Editable?) {
                 if (s.isNullOrEmpty()) {
                     sendButton.visibility = View.GONE
                     pushToTalkFab.visibility = View.VISIBLE
@@ -157,33 +165,38 @@ class AnswerActivity : MessageActivity() {
 
     private fun setupInsets() {
         val rootView = findViewById<View>(R.id.coordinatorLayout)
-        val bottomNav = findViewById<View>(R.id.bottomNavigation)
         val bottomBar = findViewById<View>(R.id.bottomBar)
+        val bottomNav = findViewById<View>(R.id.bottomNavigation)
 
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(0, systemBars.top, 0, 0) // Top padding for status bar
+            Log.d("AnswerActivity", "RootView insets applied: top=${systemBars.top}")
             insets
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { view, insets ->
-            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 4) // Adjust for keyboard and nav bar
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 8) // Buffer for spacing
+            Log.d("AnswerActivity", "BottomBar padding updated: bottom=${imeInsets.bottom + systemBars.bottom + 8}")
             insets
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(bottom = systemBars.bottom) // Only nav bar padding for bottom navigation
+            view.updatePadding(bottom = systemBars.bottom)
+            Log.d("AnswerActivity", "BottomNav padding updated: bottom=${systemBars.bottom}")
             insets
         }
     }
+
     private fun submitQuery(query: String) {
         val timestamp = DateUtils.getCurrentTimestamp()
         val message = Message("Query: $query", timestamp, true, null, null)
         messageList.add(message)
         messageAdapter.notifyItemInserted(messageList.size - 1)
+        Log.d("AnswerActivity", "Message added, scrolling to position: ${messageList.size - 1}")
         scrollToLatestMessage()
         getChatResponse(query)
         textQueryInput.text.clear()
@@ -195,6 +208,8 @@ class AnswerActivity : MessageActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("AnswerActivity", "onResume called")
+        updateRecyclerViewPadding() // Refresh padding on resume
+        scrollToLatestMessage() // Ensure latest message is visible
     }
 
     private fun startRecording() {
@@ -240,6 +255,7 @@ class AnswerActivity : MessageActivity() {
                         val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
+                        Log.d("AnswerActivity", "Voice message added, scrolling to position: ${messageList.size - 1}")
                         scrollToLatestMessage()
                         getChatResponse(voiceQueryText)
                     } else {
@@ -286,6 +302,7 @@ class AnswerActivity : MessageActivity() {
                     val message = Message("Answer: $answerText", timestamp, false, null, null)
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
+                    Log.d("AnswerActivity", "Chat response added, scrolling to position: ${messageList.size - 1}")
                     scrollToLatestMessage()
                     SpeechUtils.textToSpeech(
                         context = this@AnswerActivity,

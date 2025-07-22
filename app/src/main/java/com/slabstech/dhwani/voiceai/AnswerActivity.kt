@@ -44,15 +44,15 @@ class AnswerActivity : MessageActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ✅ Enable edge-to-edge layout
+        // Enable edge-to-edge layout
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContentView(R.layout.activity_answer)
 
-        // 💡 Handle Insets (gesture nav & cutouts)
+        // Handle Insets (gesture nav & cutouts)
         setupInsets()
 
-        // 🧩 View initializations
+        // View initializations
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
         audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
@@ -66,7 +66,7 @@ class AnswerActivity : MessageActivity() {
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
 
-        // 🌐 Preferences initialization
+        // Preferences initialization
         if (!prefs.contains(AUTO_PLAY_KEY)) {
             prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
         }
@@ -74,13 +74,13 @@ class AnswerActivity : MessageActivity() {
             prefs.edit().putBoolean("tts_enabled", false).apply()
         }
 
-        // 🎤 Audio permission check
+        // Audio permission check
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
                 arrayOf(Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_PERMISSION_CODE)
         }
 
-        // 🎙️ Push to Talk Record Toggle
+        // Push to Talk Record Toggle
         pushToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -97,23 +97,40 @@ class AnswerActivity : MessageActivity() {
             }
         }
 
-        // 📨 Handle Send button click
+        // Handle Send button click
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
-                val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Query: $query", timestamp, true, null, null)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                scrollToLatestMessage()
-                getChatResponse(query)
-                textQueryInput.text.clear()
+                submitQuery(query)
             } else {
                 Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // ✍️ Toggle between TTS and Send button
+        // Handle "Send" action from keyboard
+        textQueryInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                val query = textQueryInput.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    submitQuery(query)
+                    true
+                } else {
+                    Toast.makeText(this, "Please enter a query", Toast.LENGTH_SHORT).show()
+                    false
+                }
+            } else {
+                false
+            }
+        }
+
+        // Scroll RecyclerView when EditText gains focus
+        textQueryInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                scrollToLatestMessage()
+            }
+        }
+
+        // Toggle between TTS and Send button
         textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 if (s.isNullOrEmpty()) {
@@ -142,16 +159,29 @@ class AnswerActivity : MessageActivity() {
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
             view.updatePadding(bottom = systemBars.bottom)
             insets
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
             view.updatePadding(bottom = systemBars.bottom)
             insets
         }
+    }
+
+    private fun submitQuery(query: String) {
+        val timestamp = DateUtils.getCurrentTimestamp()
+        val message = Message("Query: $query", timestamp, true, null, null)
+        messageList.add(message)
+        messageAdapter.notifyItemInserted(messageList.size - 1)
+        scrollToLatestMessage()
+        getChatResponse(query)
+        textQueryInput.text.clear()
+        // Hide keyboard after sending
+        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(textQueryInput.windowToken, 0)
     }
 
     override fun onResume() {
@@ -176,7 +206,7 @@ class AnswerActivity : MessageActivity() {
     private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val language = when (selectedLanguage.lowercase()) {
-            "hindi", "tamil", "english", "german" , "telugu" -> selectedLanguage.lowercase()
+            "hindi", "tamil", "english", "german", "telugu" -> selectedLanguage.lowercase()
             else -> "kannada"
         }
 
@@ -249,7 +279,6 @@ class AnswerActivity : MessageActivity() {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     scrollToLatestMessage()
-
                     SpeechUtils.textToSpeech(
                         context = this@AnswerActivity,
                         scope = lifecycleScope,

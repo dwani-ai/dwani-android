@@ -99,21 +99,9 @@ interface ApiService {
     ): ExtractTextResponse
 
     @Multipart
-    @POST("v1/document_summary_v0")
-    suspend fun summarizeDocument(
-        @Part file: MultipartBody.Part,
-        @Part("src_lang") srcLang: RequestBody,
-        @Part("tgt_lang") tgtLang: RequestBody,
-        @Part("prompt") prompt: RequestBody,
-        @Header("X-API-Key") apiKey: String
-    ): DocumentSummaryResponse
-
-    @Multipart
-    @POST("v1/indic-summarize-pdf")
+    @POST("v1/indic-summarize-pdf-all")
     suspend fun summarizePdf(
         @Part file: MultipartBody.Part,
-        @Part("page_number") pageNumber: RequestBody,
-        @Part("src_lang") srcLang: RequestBody,
         @Part("tgt_lang") tgtLang: RequestBody,
         @Part("model") model: RequestBody,
         @Header("X-API-Key") apiKey: String

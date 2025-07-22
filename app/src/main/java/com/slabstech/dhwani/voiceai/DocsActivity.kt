@@ -605,8 +605,6 @@ class DocsActivity : AppCompatActivity() {
             try {
                 val requestFile = file.asRequestBody("application/pdf".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                val pageNumberPart = pageNumber.toRequestBody("text/plain".toMediaType())
-                val srcLangPart = srcLang.toRequestBody("text/plain".toMediaType())
                 val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
                 val modelPart = model.toRequestBody("text/plain".toMediaType())
 
@@ -614,8 +612,6 @@ class DocsActivity : AppCompatActivity() {
                 Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
                     filePart,
-                    pageNumberPart,
-                    srcLang = srcLangPart,
                     tgtLang = tgtLangPart,
                     model = modelPart,
                     apiKey = RetrofitClient.getApiKey()

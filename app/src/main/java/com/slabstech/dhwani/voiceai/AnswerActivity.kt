@@ -1,12 +1,14 @@
 package com.slabstech.dhwani.voiceai
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.*
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
@@ -123,10 +125,11 @@ class AnswerActivity : MessageActivity() {
             }
         }
 
-        // Scroll RecyclerView when EditText gains focus
+        // Scroll RecyclerView and show keyboard when EditText gains focus
         textQueryInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 scrollToLatestMessage()
+                showKeyboard()
             }
         }
 
@@ -147,6 +150,11 @@ class AnswerActivity : MessageActivity() {
         })
     }
 
+    private fun showKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(textQueryInput, InputMethodManager.SHOW_IMPLICIT)
+    }
+
     private fun setupInsets() {
         val rootView = findViewById<View>(R.id.coordinatorLayout)
         val bottomNav = findViewById<View>(R.id.bottomNavigation)
@@ -159,18 +167,18 @@ class AnswerActivity : MessageActivity() {
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
-            view.updatePadding(bottom = systemBars.bottom)
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 4) // Adjust for keyboard and nav bar
             insets
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
-            view.updatePadding(bottom = systemBars.bottom)
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(bottom = systemBars.bottom) // Only nav bar padding for bottom navigation
             insets
         }
     }
-
     private fun submitQuery(query: String) {
         val timestamp = DateUtils.getCurrentTimestamp()
         val message = Message("Query: $query", timestamp, true, null, null)
@@ -180,7 +188,7 @@ class AnswerActivity : MessageActivity() {
         getChatResponse(query)
         textQueryInput.text.clear()
         // Hide keyboard after sending
-        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(textQueryInput.windowToken, 0)
     }
 

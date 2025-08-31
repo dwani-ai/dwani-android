@@ -27,7 +27,7 @@ abstract class MessageActivity : AuthenticatedActivity() {
         messageAdapter = MessageAdapter(messageList, { position ->
             showMessageOptionsDialog(position)
         }, { message, button ->
-            toggleAudioPlayback(message, button)
+            //toggleAudioPlayback(message, button)
         })
         historyRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MessageActivity)
@@ -126,5 +126,4 @@ abstract class MessageActivity : AuthenticatedActivity() {
         NavigationUtils.setupBottomNavigation(this, bottomNavigation, currentItemId)
     }
 
-    abstract fun toggleAudioPlayback(message: Message, button: ImageButton)
 }

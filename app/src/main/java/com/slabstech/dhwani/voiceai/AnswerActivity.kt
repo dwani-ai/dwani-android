@@ -36,18 +36,11 @@ import java.io.File
 
 class AnswerActivity : MessageActivity() {
 
-    private val RECORD_AUDIO_PERMISSION_CODE = 100
-    private var audioRecord: AudioRecord? = null
-    private lateinit var audioLevelBar: ProgressBar
-    private lateinit var progressBar: ProgressBar
-    private lateinit var pushToTalkFab: FloatingActionButton
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var toolbar: Toolbar
-    private lateinit var ttsProgressBar: ProgressBar
-    private var isRecording = false
-    private var mediaPlayer: MediaPlayer? = null
-    private val AUTO_PLAY_KEY = "auto_play_tts"
+    private lateinit var progressBar: ProgressBar
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,52 +52,15 @@ class AnswerActivity : MessageActivity() {
 
         // View initializations
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
-        audioLevelBar = findViewById(R.id.audioLevelBar)
-        progressBar = findViewById(R.id.progressBar)
-        pushToTalkFab = findViewById(R.id.pushToTalkFab)
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         toolbar = findViewById(R.id.toolbar)
-        ttsProgressBar = findViewById(R.id.ttsProgressBar)
 
         setSupportActionBar(toolbar)
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
         setupInsets()
 
-        // Preferences initialization
-        if (!prefs.contains(AUTO_PLAY_KEY)) {
-            prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
-        }
-        if (!prefs.contains("tts_enabled")) {
-            prefs.edit().putBoolean("tts_enabled", false).apply()
-        }
-
-        // Audio permission check
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
-
-        // Push to Talk Record Toggle
-        pushToTalkFab.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startRecording()
-                    animateFabRecordingStart()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    stopRecording()
-                    animateFabRecordingStop()
-                    true
-                }
-                else -> false
-            }
-        }
 
         // Handle Send button click
         sendButton.setOnClickListener {
@@ -146,10 +102,8 @@ class AnswerActivity : MessageActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {
                 if (s.isNullOrEmpty()) {
                     sendButton.visibility = View.GONE
-                    pushToTalkFab.visibility = View.VISIBLE
                 } else {
                     sendButton.visibility = View.VISIBLE
-                    pushToTalkFab.visibility = View.GONE
                 }
             }
 
@@ -212,65 +166,7 @@ class AnswerActivity : MessageActivity() {
         scrollToLatestMessage() // Ensure latest message is visible
     }
 
-    private fun startRecording() {
-        AudioUtils.startPushToTalkRecording(this, audioLevelBar, { animateFabRecordingStart() }) { file ->
-            file?.let {
-                val uri = Uri.fromFile(it)
-                sendAudioToApi(it, uri)
-            }
-        }
-    }
 
-    private fun stopRecording() {
-        AudioUtils.stopRecording(audioRecord, isRecording)
-        animateFabRecordingStop()
-    }
-
-    private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
-        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-        val language = when (selectedLanguage.lowercase()) {
-            "hindi", "tamil", "english", "german", "telugu" -> selectedLanguage.lowercase()
-            else -> "kannada"
-        }
-
-        val requestFile = audioFile.asRequestBody("audio/mpeg".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
-
-        lifecycleScope.launch {
-            ApiUtils.performApiCall(
-                context = this@AnswerActivity,
-                progressBar = progressBar,
-                apiCall = {
-                    RetrofitClient.apiService(this@AnswerActivity).transcribeAudio(
-                        filePart,
-                        language,
-                        RetrofitClient.getApiKey()
-                    )
-                },
-                onSuccess = { response ->
-                    val voiceQueryText = response.text
-                    val timestamp = DateUtils.getCurrentTimestamp()
-
-                    if (voiceQueryText.isNotEmpty()) {
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        Log.d("AnswerActivity", "Voice message added, scrolling to position: ${messageList.size - 1}")
-                        scrollToLatestMessage()
-                        getChatResponse(voiceQueryText)
-                    } else {
-                        Toast.makeText(this@AnswerActivity, "Voice query empty", Toast.LENGTH_SHORT).show()
-                    }
-
-                    audioFile.delete()
-                },
-                onError = { e ->
-                    Log.e("AnswerActivity", "Transcription failed: ${e.message}", e)
-                    audioFile.delete()
-                }
-            )
-        }
-    }
 
     private fun getChatResponse(prompt: String) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
@@ -304,68 +200,14 @@ class AnswerActivity : MessageActivity() {
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     Log.d("AnswerActivity", "Chat response added, scrolling to position: ${messageList.size - 1}")
                     scrollToLatestMessage()
-                    SpeechUtils.textToSpeech(
-                        context = this@AnswerActivity,
-                        scope = lifecycleScope,
-                        text = answerText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = langCode
-                    )
                 },
                 onError = { e -> Log.e("AnswerActivity", "Chat failed: ${e.message}", e) }
             )
         }
     }
 
-    override fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        mediaPlayer = SpeechUtils.toggleAudioPlayback(
-            context = this,
-            message = message,
-            button = button,
-            recyclerView = historyRecyclerView,
-            adapter = messageAdapter,
-            mediaPlayer = mediaPlayer,
-            playIconResId = android.R.drawable.ic_media_play,
-            stopIconResId = R.drawable.ic_media_stop
-        )
-    }
-
-    private fun animateFabRecordingStart() {
-        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
-        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
-        ).apply {
-            duration = 200
-            start()
-        }
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
-    }
-
-    private fun animateFabRecordingStop() {
-        pushToTalkFab.setImageResource(R.drawable.ic_mic)
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
-        ).apply {
-            duration = 200
-            start()
-        }
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
-    }
 
     override fun onDestroy() {
         super.onDestroy()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        audioRecord?.release()
-        audioRecord = null
     }
 }

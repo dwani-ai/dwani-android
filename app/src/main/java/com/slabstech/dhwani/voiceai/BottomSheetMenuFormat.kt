@@ -27,11 +27,6 @@ class BottomSheetMenuFragment : BottomSheetDialogFragment() {
             dismiss()
         }
 
-        translateOption.setOnClickListener {
-            startActivity(Intent(requireContext(), TranslateActivity::class.java))
-            dismiss()
-        }
-
         docsOption.setOnClickListener {
             startActivity(Intent(requireContext(), DocsActivity::class.java))
             dismiss()

@@ -7,9 +7,8 @@
         <item>English</item>
         <item>German</item>
         <item>Telugu</item>
-
+        <item>Malayalam</item>
         <!--
-<item>Malayalam</item>
 <item>Telugu</item>
 <item>English</item>
 <item>German</item>
@@ -29,9 +28,8 @@
         <item>english</item>
         <item>german</item>
         <item>telugu</item>
-
+        <item>malayalam</item>
         <!--
-<item>malayalam</item>
 <item>telugu</item>
 <item>english</item>
 <item>german</item>
@@ -51,8 +49,8 @@
         <item>Tamil</item>
         <item>German</item>
         <item>Telugu</item>
+        <item>Malayalam</item>
         <!--
-<item>Malayalam</item>
 <item>Telugu</item>
 <item>German</item>
 <item>French</item>
@@ -71,12 +69,8 @@
         <item>tam_Taml</item>
         <item>deu_Latn</item>
         <item>tel_Telu</item>
-
+        <item>mal_Mlym</item>
         <!--
-<item>tam_Taml</item>
-<item>mal_Mlym</item>
-<item>tel_Telu</item>
-
 <item>deu_Latn</item>
 <item>fra_Latn</item>
 <item>nld_Latn</item>

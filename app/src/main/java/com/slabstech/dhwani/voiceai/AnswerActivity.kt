@@ -229,7 +229,7 @@ class AnswerActivity : MessageActivity() {
     private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
         val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
         val language = when (selectedLanguage.lowercase()) {
-            "hindi", "tamil", "english", "german", "telugu" -> selectedLanguage.lowercase()
+            "hindi", "tamil", "english", "german", "telugu" , "malayalam" -> selectedLanguage.lowercase()
             else -> "kannada"
         }
 
@@ -280,7 +280,8 @@ class AnswerActivity : MessageActivity() {
             "kannada" to "kan_Knda",
             "tamil" to "tam_Taml",
             "german" to "deu_Latn",
-            "telugu" to "tel_Telu"
+            "telugu" to "tel_Telu",
+            "malayalam" to "mal_Mlym"
         )
         val langCode = languageMap[selectedLanguage] ?: "kan_Knda"
 

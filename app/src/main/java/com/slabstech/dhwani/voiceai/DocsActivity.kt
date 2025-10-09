@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
@@ -16,6 +17,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.ProgressBar
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -66,8 +68,14 @@ class DocsActivity : AppCompatActivity() {
 
     private var selectedFileType: String? = null
 
+    // Launcher for non-visual files (PDF, Audio) using traditional GetContent
     private val pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileUpload(it, selectedFileType) }
+    }
+
+    // Launcher for images using Photo Picker (Android 13+ recommended, falls back on older)
+    private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { handleFileUpload(it, "image") }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,13 +122,16 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    READ_STORAGE_PERMISSION_CODE
-                )
+            // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
+                        READ_STORAGE_PERMISSION_CODE
+                    )
+                }
             }
 
             attachFab.setOnClickListener {
@@ -172,7 +183,6 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
-
     private fun showFileTypeSelectionDialog() {
         val options = arrayOf("Image", "PDF", "Audio")
         AlertDialog.Builder(this)
@@ -181,7 +191,8 @@ class DocsActivity : AppCompatActivity() {
                 when (which) {
                     0 -> {
                         selectedFileType = "image"
-                        pickFileLauncher.launch("image/*")
+                        // Use Photo Picker for images (permissionless on Android 13+)
+                        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
                     1 -> {
                         selectedFileType = "pdf"

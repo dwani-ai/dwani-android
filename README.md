@@ -1,10 +1,10 @@
 # dwani AI - Android App
 
-**Dhwani AI** is an innovative Android application designed to provide advanced voice-based AI functionalities, including voice detection, translation, document processing, and interactive answers. The app leverages cutting-edge AI technologies to deliver a seamless and intuitive user experience, making it a versatile tool for communication and productivity.
+**dwani AI** is an innovative Android application designed to provide advanced voice-based AI functionalities, including voice detection, translation, document processing, and interactive answers. The app leverages cutting-edge AI technologies to deliver a seamless and intuitive user experience, making it a versatile tool for communication and productivity.
 
 
 ### Release Notes
-- Update the Dhwani Server URL in below files , replace example.com with your Dhwani API server
+- Update the dwani Server URL in below files , replace example.com with your dwani API server
   - app/src/main/java/com/slabstech/dhwani/voiceai/Api.kt
   - app/src/main/res/xml/preferences.xml
 

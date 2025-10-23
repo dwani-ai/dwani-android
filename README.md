@@ -81,3 +81,6 @@ License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 
+<!--
+ffmpeg -i input.webm -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30" -c:v libx264 -crf 23 -c:a copy output.mp4
+-->

@@ -12,6 +12,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
 import androidx.preference.SwitchPreferenceCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,8 +64,79 @@ class SettingsActivity : AppCompatActivity() {
             .writeTimeout(10, TimeUnit.SECONDS)
             .build()
 
+        private val defaultApiEndpoint = "https://mobile-api.dwani.ai"
+
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.preferences, rootKey)
+            val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+
+            val toggle = findPreference<SwitchPreferenceCompat>("use_custom_endpoint")
+            val edit = findPreference<EditTextPreference>("api_endpoint")
+
+            val storedUrl = prefs.getString("api_endpoint", defaultApiEndpoint)
+            val hasCustomEndpoint = storedUrl != defaultApiEndpoint
+            val displayText = if (hasCustomEndpoint) storedUrl else null
+
+            toggle?.isChecked = hasCustomEndpoint
+            toggle?.summary = if (hasCustomEndpoint) {
+                "Using custom API endpoint"
+            } else {
+                "Using default API endpoint"
+            }
+
+            edit?.text = displayText
+            edit?.summary = if (hasCustomEndpoint) {
+                storedUrl
+            } else {
+                "Default API endpoint"
+            }
+
+            // Custom API Endpoint toggle
+            toggle?.setOnPreferenceChangeListener { preference, newValue ->
+                val useCustom = newValue as Boolean
+                if (!useCustom) {
+                    prefs.edit().remove("api_endpoint").apply()
+                    edit?.text = null
+                    edit?.summary = "Default API endpoint"
+                } else {
+                    val currentStored = prefs.getString("api_endpoint", defaultApiEndpoint)
+                    if (currentStored == defaultApiEndpoint) {
+                        edit?.text = ""
+                        edit?.summary = "Enter custom API endpoint"
+                    } else {
+                        edit?.text = currentStored
+                        edit?.summary = currentStored
+                    }
+                }
+                preference.summary = if (useCustom) {
+                    "Using custom API endpoint"
+                } else {
+                    "Using default API endpoint"
+                }
+                true
+            }
+
+            // API Endpoint edit
+            edit?.setOnPreferenceChangeListener { preference, newValue ->
+                val newUrl = (newValue as CharSequence).toString().trim()
+                when {
+                    newUrl == defaultApiEndpoint -> {
+                        Toast.makeText(requireContext(), "Cannot set to default API endpoint for security reasons", Toast.LENGTH_SHORT).show()
+                        false
+                    }
+                    newUrl.isEmpty() -> {
+                        prefs.edit().remove("api_endpoint").apply()
+                        preference.summary = "Enter custom API endpoint"
+                        toggle?.isChecked = false
+                        false
+                    }
+                    else -> {
+                        preference.summary = newUrl
+                        toggle?.isChecked = true
+                        true
+                    }
+                }
+            }
 
             // Text-to-Speech toggle summary
             findPreference<SwitchPreferenceCompat>("tts_enabled")?.apply {

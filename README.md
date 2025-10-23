@@ -1,6 +1,8 @@
 # dwani AI - Android App
 
-**dwani AI** is an innovative Android application designed to provide advanced voice-based AI functionalities, including voice detection, translation, document processing, and interactive answers. The app leverages cutting-edge AI technologies to deliver a seamless and intuitive user experience, making it a versatile tool for communication and productivity.
+**dwani AI** is an Android application designed for Indian Languages AI 
+
+It provides including voice detection, translation, document processing, and interactive answers. 
 
 
 ### Release Notes
@@ -14,21 +16,17 @@
 - **Translation**: Translate text or speech across multiple languages.
 - **Document Processing**: Access and manage documents with AI-powered insights.
 - **Interactive Answers**: Get intelligent responses to queries through the Answer Activity.
-- **Onboarding**: Guided setup for new users to explore app features.
-
 
 ## App Components
 
 The app consists of the following key activities and services, as defined in the Android manifest:
 
-- **LoginActivity**: Entry point for user authentication.
-- **DhwaniActivity**: Core activity for primary app functionalities.
-- **OnboardingActivity**: Walkthrough for first-time users.
-- **SettingsActivity**: Configuration options for user preferences.
 - **AnswerActivity**: Displays AI-generated answers to user queries.
 - **TranslateActivity**: Handles translation tasks.
 - **DocsActivity**: Manages document-related features.
 - **VoiceDetectionActivity**: Processes voice input for AI interactions.
+- **DhwaniActivity**: Core activity for primary app functionalities.
+- **SettingsActivity**: Configuration options for user preferences.
 
 
 ## Permissions
@@ -68,14 +66,6 @@ To build and run dwani AI, ensure you have the following:
         Connect an Android device or start an emulator.
         Click Run > Run 'app' or press Shift+F10.
 
-Contributing
-Contributions are welcome! To contribute:
-
-    Fork the repository.
-    Create a feature branch (git checkout -b feature/your-feature).
-    Commit changes (git commit -m 'Add your feature').
-    Push to the branch (git push origin feature/your-feature).
-    Open a pull request.
 
 License
 This project is licensed under the MIT License. See the LICENSE file for details.

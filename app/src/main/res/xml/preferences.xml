@@ -1,20 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
-    <PreferenceCategory android:title="API Settings">
-        <SwitchPreferenceCompat
-            android:key="use_custom_endpoint"
-            android:title="Use Custom API Endpoint"
-            android:defaultValue="false"
-            android:summary="Using default API endpoint"/>
-
-        <EditTextPreference
-            android:key="api_endpoint"
-            android:title="Custom API Endpoint"
-            android:inputType="textUri"
-            android:summary="Default API endpoint"
-            android:dependency="use_custom_endpoint"/>
-    </PreferenceCategory>
-
     <ListPreference
         android:key="language"
         android:title="Language"
@@ -35,6 +20,20 @@
             android:defaultValue="true"
             android:summary="Automatically play TTS audio when enabled"
             android:dependency="tts_enabled"/>
+    </PreferenceCategory>
+    <PreferenceCategory android:title="API Settings">
+        <SwitchPreferenceCompat
+            android:key="use_custom_endpoint"
+            android:title="Use Custom API Endpoint"
+            android:defaultValue="false"
+            android:summary="Using default API endpoint"/>
+
+        <EditTextPreference
+            android:key="api_endpoint"
+            android:title="Custom API Endpoint"
+            android:inputType="textUri"
+            android:summary="Default API endpoint"
+            android:dependency="use_custom_endpoint"/>
     </PreferenceCategory>
 
 </PreferenceScreen>

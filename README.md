@@ -1,10 +1,10 @@
-# Dhwani AI - Android App
+# dwani AI - Android App
 
-**Dhwani AI** is an innovative Android application designed to provide advanced voice-based AI functionalities, including voice detection, translation, document processing, and interactive answers. The app leverages cutting-edge AI technologies to deliver a seamless and intuitive user experience, making it a versatile tool for communication and productivity.
+**dwani AI** is an innovative Android application designed to provide advanced voice-based AI functionalities, including voice detection, translation, document processing, and interactive answers. The app leverages cutting-edge AI technologies to deliver a seamless and intuitive user experience, making it a versatile tool for communication and productivity.
 
 
 ### Release Notes
-- Update the Dhwani Server URL in below files , replace example.com with your Dhwani API server
+- Update the dwani Server URL in below files , replace example.com with your dwani API server
   - app/src/main/java/com/slabstech/dhwani/voiceai/Api.kt
   - app/src/main/res/xml/preferences.xml
 
@@ -33,7 +33,7 @@ The app consists of the following key activities and services, as defined in the
 
 ## Permissions
 
-Dhwani AI requires the following permissions to function effectively:
+dwani AI requires the following permissions to function effectively:
 
 - **RECORD_AUDIO**: Enables voice input for voice detection and interaction.
 - **READ_EXTERNAL_STORAGE** (up to SDK 32): Accesses external storage for document processing.
@@ -42,7 +42,7 @@ Dhwani AI requires the following permissions to function effectively:
 
 ## Prerequisites
 
-To build and run Dhwani AI, ensure you have the following:
+To build and run dwani AI, ensure you have the following:
 
 - **Android Studio**: Version 4.0 or higher.
 - **JDK**: Version 11 or higher.
@@ -54,7 +54,7 @@ To build and run Dhwani AI, ensure you have the following:
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/slabstech/dhwani-android
+   git clone https://github.com/dwani-ai/dwani-android/
     ```
    
     Open in Android Studio:
@@ -67,58 +67,6 @@ To build and run Dhwani AI, ensure you have the following:
     Run the App:
         Connect an Android device or start an emulator.
         Click Run > Run 'app' or press Shift+F10.
-
-Project Structure
-```bash
-dhwani-ai/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/slabstech/dhwani/voiceai/
-│   │   │   │   ├── DhwaniApp.java
-│   │   │   │   ├── LoginActivity.java
-│   │   │   │   ├── DhwaniActivity.java
-│   │   │   │   ├── OnboardingActivity.java
-│   │   │   │   ├── SettingsActivity.java
-│   │   │   │   ├── AnswerActivity.java
-│   │   │   │   ├── TranslateActivity.java
-│   │   │   │   ├── DocsActivity.java
-│   │   │   │   ├── VoiceDetectionActivity.java
-│   │   │   ├── res/
-│   │   │   │   ├── layout/
-│   │   │   │   ├── mipmap/
-│   │   │   │   ├── values/
-│   │   │   ├── AndroidManifest.xml
-│   ├── build.gradle
-├── gradle/
-├── build.gradle
-├── settings.gradle
-```
-
-Configuration
-
-    App Name: Defined in res/values/strings.xml as app_name.
-    Icons: Launcher icons are stored in res/mipmap/ (ic_launcher and ic_launcher_round).
-    Theme: Uses a custom light theme (Theme.DhwaniVoiceAI.Light).
-    Backup: Enabled with android:allowBackup="true".
-
-Dependencies
-The app uses standard Android libraries and services, including:
-
-    AndroidX: For modern Android components.
-    WorkManager: For background tasks (SystemAlarmService, SystemJobService).
-    Additional dependencies are specified in app/build.gradle.
-
-Usage
-
-    Launch the App: Start with LoginActivity to sign in or create an account.
-    Onboarding: New users are guided through features via OnboardingActivity.
-    Explore Features:
-        Use VoiceDetectionActivity for voice commands.
-        Access TranslateActivity for language translation.
-        Manage documents in DocsActivity.
-        View AI responses in AnswerActivity.
-    Customize: Adjust settings in SettingsActivity.
 
 Contributing
 Contributions are welcome! To contribute:
@@ -133,3 +81,6 @@ License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 
+<!--
+ffmpeg -i input.webm -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30" -c:v libx264 -crf 23 -c:a copy output.mp4
+-->

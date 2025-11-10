@@ -108,7 +108,17 @@
             android:contentDescription="Send"
             android:background="@android:color/transparent"
             android:tint="@color/whatsapp_green"
-            android:visibility="gone"/>
+            android:visibility="gone"
+            android:layout_marginEnd="4dp"/>
+
+        <ImageButton
+            android:id="@+id/attachImageButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_attach"
+            android:contentDescription="Attach Image"
+            android:background="@android:color/transparent"
+            android:tint="@color/whatsapp_green"/>
 
     </LinearLayout>
 

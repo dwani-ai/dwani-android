@@ -19,7 +19,6 @@
         android:id="@+id/nav_translate"
         android:icon="@android:drawable/ic_menu_search"
         android:title="translate"
-        android:visible="false"
         />
 
     <item

@@ -1,50 +1,28 @@
 package com.slabstech.dhwani.voiceai
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
-import android.view.MotionEvent
 import android.view.View
+import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.Toast
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asRequestBody
-import java.io.File
-import java.io.FileOutputStream
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
-import android.media.AudioRecord
-import android.media.MediaPlayer
-import android.text.Editable
 import androidx.appcompat.widget.Toolbar
-import com.slabstech.dhwani.voiceai.utils.SpeechUtils
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class TranslateActivity : MessageActivity() {
 
-    private val RECORD_AUDIO_PERMISSION_CODE = 100
-    private var audioRecord: AudioRecord? = null
-    private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
-    private lateinit var pushToTalkFab: FloatingActionButton
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
+    private lateinit var sourceLanguageSpinner: Spinner
     private lateinit var targetLanguageSpinner: Spinner
     private lateinit var toolbar: Toolbar
-    private lateinit var ttsProgressBar: ProgressBar
-    private var isRecording = false
-    private var mediaPlayer: MediaPlayer? = null
-    private val AUTO_PLAY_KEY = "auto_play_tts"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,48 +30,22 @@ class TranslateActivity : MessageActivity() {
         setContentView(R.layout.activity_translate)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
-        audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
-        pushToTalkFab = findViewById(R.id.pushToTalkFab)
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
+        sourceLanguageSpinner = findViewById(R.id.sourceLanguageSpinner)
+        targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
         toolbar = findViewById(R.id.toolbar)
-        ttsProgressBar = findViewById(R.id.ttsProgressBar)
-        //targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
 
         setSupportActionBar(toolbar)
         setupMessageList()
-        //setupBottomNavigation(R.id.nav_translate)
+        setupBottomNavigation(R.id.nav_translate)
 
-        if (!prefs.contains(AUTO_PLAY_KEY)) {
-            prefs.edit().putBoolean(AUTO_PLAY_KEY, true).apply()
-        }
-        if (!prefs.contains("tts_enabled")) {
-            prefs.edit().putBoolean("tts_enabled", false).apply()
-        }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
-
-        pushToTalkFab.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startRecording()
-                    animateFabRecordingStart()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    stopRecording()
-                    animateFabRecordingStop()
-                    true
-                }
-                else -> false
-            }
+        // Set default source language to Kannada
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val defaultSourceIndex = languageValues.indexOf("kannada")
+        if (defaultSourceIndex != -1) {
+            sourceLanguageSpinner.setSelection(defaultSourceIndex)
         }
 
         sendButton.setOnClickListener {
@@ -111,19 +63,40 @@ class TranslateActivity : MessageActivity() {
             }
         }
 
-        textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
+        textQueryInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
             override fun afterTextChanged(s: Editable?) {
                 if (s.isNullOrEmpty()) {
                     sendButton.visibility = View.GONE
-                    pushToTalkFab.visibility = View.VISIBLE
                 } else {
                     sendButton.visibility = View.VISIBLE
-                    pushToTalkFab.visibility = View.GONE
                 }
             }
         })
+
+        // Optional: Handle spinner item selection changes if needed
+        sourceLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Handle source language change if needed
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // Handle no selection
+            }
+        }
+
+        targetLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Handle target language change if needed
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // Handle no selection
+            }
+        }
     }
 
     override fun onResume() {
@@ -131,72 +104,11 @@ class TranslateActivity : MessageActivity() {
         Log.d("TranslateActivity", "onResume called")
     }
 
-    private fun startRecording() {
-        AudioUtils.startPushToTalkRecording(this, audioLevelBar, { animateFabRecordingStart() }) { file ->
-            file?.let {
-                // Convert File to Uri for Message
-                val uri = Uri.fromFile(it)
-                sendAudioToApi(it, uri)
-            }
-        }
-    }
-
-    private fun stopRecording() {
-        AudioUtils.stopRecording(audioRecord, isRecording)
-        animateFabRecordingStop()
-    }
-
-    private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
-        val token = AuthManager.getToken(this) ?: return
-        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-
-        val audioBytes = audioFile.readBytes()
-        val encryptedAudio = RetrofitClient.encryptAudio(audioBytes)
-        val encryptedFile = File(cacheDir, "encrypted_${audioFile.name}")
-        FileOutputStream(encryptedFile).use { it.write(encryptedAudio) }
-
-        val encryptedLanguage = RetrofitClient.encryptText(selectedLanguage)
-        val requestFile = encryptedFile.asRequestBody("audio/mpeg".toMediaType())
-        val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
-
-        lifecycleScope.launch {
-            ApiUtils.performApiCall(
-                context = this@TranslateActivity,
-                progressBar = progressBar,
-                apiCall = {
-                    RetrofitClient.apiService(this@TranslateActivity).transcribeAudio(
-                        filePart,
-                        encryptedLanguage,
-                        RetrofitClient.getApiKey()
-                    )
-                },
-                onSuccess = { response ->
-                    val voiceQueryText = response.text
-                    val timestamp = DateUtils.getCurrentTimestamp()
-                    if (voiceQueryText.isNotEmpty()) {
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        scrollToLatestMessage()
-                        getTranslationResponse(voiceQueryText)
-                    } else {
-                        Toast.makeText(this@TranslateActivity, "Voice Query empty", Toast.LENGTH_SHORT).show()
-                    }
-                    audioFile.delete()
-                    encryptedFile.delete()
-                },
-                onError = { e ->
-                    Log.e("TranslateActivity", "Transcription failed: ${e.message}", e)
-                    audioFile.delete()
-                    encryptedFile.delete()
-                }
-            )
-        }
-    }
-
     private fun getTranslationResponse(input: String) {
-        val token = AuthManager.getToken(this) ?: return
-        val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+        // Removed unnecessary token check as API uses X-API-Key
+        val sourceIndex = sourceLanguageSpinner.selectedItemPosition
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val selectedLanguage = languageValues[sourceIndex]
         val languageMap = mapOf(
             "english" to "eng_Latn",
             "hindi" to "hin_Deva",
@@ -262,20 +174,6 @@ class TranslateActivity : MessageActivity() {
                     messageList.add(message)
                     messageAdapter.notifyItemInserted(messageList.size - 1)
                     scrollToLatestMessage()
-
-                    if (prefs.getBoolean("tts_enabled", false)) {
-                        val encryptedTranslatedText = RetrofitClient.encryptText(translatedText)
-                        SpeechUtils.textToSpeech(
-                            context = this@TranslateActivity,
-                            scope = lifecycleScope,
-                            text = encryptedTranslatedText,
-                            message = message,
-                            recyclerView = historyRecyclerView,
-                            adapter = messageAdapter,
-                            ttsProgressBarVisibility = { visible -> ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE },
-                            srcLang = tgtLang
-                        )
-                    }
                 },
                 onError = { e -> Log.e("TranslateActivity", "Translation failed: ${e.message}", e) }
             )
@@ -283,48 +181,11 @@ class TranslateActivity : MessageActivity() {
     }
 
     override fun toggleAudioPlayback(message: Message, button: ImageButton) {
-        mediaPlayer = SpeechUtils.toggleAudioPlayback(
-            context = this,
-            message = message,
-            button = button,
-            recyclerView = historyRecyclerView,
-            adapter = messageAdapter,
-            mediaPlayer = mediaPlayer,
-            playIconResId = android.R.drawable.ic_media_play,
-            stopIconResId = R.drawable.ic_media_stop
-        )
-    }
-
-    private fun animateFabRecordingStart() {
-        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
-        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
-        )
-        scaleUp.duration = 200
-        scaleUp.start()
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
-    }
-
-    private fun animateFabRecordingStop() {
-        pushToTalkFab.setImageResource(R.drawable.ic_mic)
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
-            pushToTalkFab,
-            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
-        )
-        scaleDown.duration = 200
-        scaleDown.start()
-        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
+        // No audio functionality in TranslateActivity
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.d("TranslateActivity", "onDestroy called")
-        mediaPlayer?.release()
-        mediaPlayer = null
-        audioRecord?.release()
-        audioRecord = null
     }
 }

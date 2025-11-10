@@ -2,4 +2,6 @@
     <string name="app_name">dwani.ai</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="source_language">Source Language</string>
+    <string name="target_language">Target Language</string>
 </resources>

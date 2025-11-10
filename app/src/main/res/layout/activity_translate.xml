@@ -1,16 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
+<androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/coordinatorLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/whatsapp_background">
+    android:background="@color/whatsapp_background"
+    android:fitsSystemWindows="false">
 
+    <!-- App Bar with Toolbar and Language Spinners -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/whatsapp_green">
+        android:background="@color/whatsapp_green"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
@@ -18,54 +25,80 @@
             app:title="dwani.ai - translate"
             app:titleTextColor="#FFFFFF"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/whatsapp_input_background"
+            android:padding="8dp">
+
+            <Spinner
+                android:id="@+id/sourceLanguageSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:entries="@array/language_names"
+                android:prompt="@string/source_language"/>
+
+            <Spinner
+                android:id="@+id/targetLanguageSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:entries="@array/target_languages"
+                android:prompt="@string/target_language"/>
+
+        </LinearLayout>
+
     </com.google.android.material.appbar.AppBarLayout>
 
-    <ProgressBar
-        android:id="@+id/audioLevelBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="8dp"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="@color/whatsapp_green"
-        android:background="#D0C8B8"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        android:layout_margin="8dp"/>
-
+    <!-- Message history -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/historyRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="120dp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:padding="8dp"
-        android:clipToPadding="false"/>
+        android:clipToPadding="false"
+        android:scrollbars="vertical"
+        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Bottom Message Input Bar -->
     <LinearLayout
         android:id="@+id/bottomBar"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@color/whatsapp_input_background"
-        android:elevation="4dp"
         android:padding="8dp"
-        app:layout_dodgeInsetEdges="bottom"
-        android:layout_gravity="bottom"
-        android:layout_marginBottom="56dp">
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <EditText
             android:id="@+id/textQueryInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginEnd="8dp"
             android:hint="Type a sentence..."
             android:textSize="16sp"
             android:textColor="@color/whatsapp_text"
-            android:background="@drawable/whatsapp_input_background"
             android:padding="8dp"
-            android:layout_marginEnd="8dp"/>
+            android:background="@drawable/whatsapp_input_background"
+            android:imeOptions="actionSend"
+            android:inputType="text"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:focusable="true"
+            android:focusableInTouchMode="true"/>
 
         <ImageButton
             android:id="@+id/sendButton"
@@ -74,42 +107,35 @@
             android:src="@drawable/ic_send"
             android:contentDescription="Send"
             android:background="@android:color/transparent"
-            android:tint="@color/whatsapp_green"/>
+            android:tint="@color/whatsapp_green"
+            android:visibility="gone"/>
 
-        <ProgressBar
-            android:id="@+id/ttsProgressBar"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:visibility="gone"
-            android:layout_marginEnd="8dp"
-            android:indeterminateTint="@color/whatsapp_green"/>
-
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/pushToTalkFab"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@drawable/ic_mic"
-            android:contentDescription="Push to Talk"
-            app:backgroundTint="@color/whatsapp_green"
-            app:tint="#FFFFFF"/>
     </LinearLayout>
 
+    <!-- Bottom Navigation Bar -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
         android:background="@color/whatsapp_input_background"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@color/whatsapp_green"
         app:itemTextColor="@color/whatsapp_green"
-        app:labelVisibilityMode="labeled"/>
+        app:labelVisibilityMode="labeled"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Center progress loader -->
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        android:layout_gravity="center"
-        android:indeterminateTint="@color/whatsapp_green"/>
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+        android:indeterminateTint="@color/whatsapp_green"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

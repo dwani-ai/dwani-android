@@ -23,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,16 +43,38 @@ class TranslateActivity : MessageActivity() {
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var attachImageButton: ImageButton
+    private lateinit var cameraButton: ImageButton
     private lateinit var sourceLanguageSpinner: Spinner
     private lateinit var targetLanguageSpinner: Spinner
     private lateinit var toolbar: Toolbar
 
-    // Launcher for images using Photo Picker (Android 13+ recommended, falls back on older)
+    // Launcher for gallery images using Photo Picker (Android 13+ recommended, falls back on older)
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { handleImageUpload(it) }
+        uri?.let { handleImageUpload(it, false) }
     }
 
+    // Launcher for camera capture
+    private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) {
+            currentPhotoUri?.let { uri -> handleImageUpload(uri, true) }
+        } else {
+            // Clean up temp file if camera capture failed
+            photoFile?.let { file ->
+                if (file.exists()) {
+                    file.delete()
+                }
+            }
+        }
+        // Clean up references
+        photoFile = null
+        currentPhotoUri = null
+    }
+
+    private var photoFile: File? = null
+    private var currentPhotoUri: Uri? = null
+
     private val READ_STORAGE_PERMISSION_CODE = 101
+    private val CAMERA_PERMISSION_CODE = 102
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +86,7 @@ class TranslateActivity : MessageActivity() {
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         attachImageButton = findViewById(R.id.attachImageButton)
+        cameraButton = findViewById(R.id.cameraButton)
         sourceLanguageSpinner = findViewById(R.id.sourceLanguageSpinner)
         targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
         toolbar = findViewById(R.id.toolbar)
@@ -81,6 +105,16 @@ class TranslateActivity : MessageActivity() {
                     READ_STORAGE_PERMISSION_CODE
                 )
             }
+        }
+
+        // Request camera permission if not granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                CAMERA_PERMISSION_CODE
+            )
         }
 
         // Set default source language to Kannada
@@ -108,6 +142,10 @@ class TranslateActivity : MessageActivity() {
         attachImageButton.setOnClickListener {
             // Use Photo Picker for images (permissionless on Android 13+)
             pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+
+        cameraButton.setOnClickListener {
+            launchCamera()
         }
 
         textQueryInput.addTextChangedListener(object : TextWatcher {
@@ -143,6 +181,29 @@ class TranslateActivity : MessageActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 // Handle no selection
             }
+        }
+    }
+
+    private fun launchCamera() {
+        val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
+            return
+        }
+        currentPhotoUri = createTempImageFileUri()
+        currentPhotoUri?.let { takePictureLauncher.launch(it) }
+    }
+
+    private fun createTempImageFileUri(): Uri? {
+        return try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val imageFileName = "JPEG_" + timeStamp + "_"
+            photoFile = File.createTempFile(imageFileName, ".jpg", cacheDir)
+            FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile!!)
+        } catch (e: Exception) {
+            Log.e("TranslateActivity", "Failed to create temp image file: ${e.message}", e)
+            Toast.makeText(this, "Failed to prepare camera", Toast.LENGTH_SHORT).show()
+            null
         }
     }
 
@@ -227,30 +288,63 @@ class TranslateActivity : MessageActivity() {
         }
     }
 
-    private fun handleImageUpload(uri: Uri) {
+    private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
+        Log.d("TranslateActivity", "Handling image upload for URI: $uri, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        val inputStream = contentResolver.openInputStream(uri)
-        val file = File(cacheDir, fileName)
+        Log.d("TranslateActivity", "File name: $fileName")
         val query = "Extract text from image"
 
+        var tempFile: File? = null
+
         try {
-            inputStream?.use { input ->
-                FileOutputStream(file).use { output ->
-                    input.copyTo(output)
+            if (isFromCamera && photoFile != null && photoFile!!.exists()) {
+                // For camera, use the photoFile directly
+                tempFile = photoFile
+                Log.d("TranslateActivity", "Using camera photo file: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
+            } else {
+                // For gallery, copy from inputStream
+                val inputStream = contentResolver.openInputStream(uri)
+                tempFile = File(cacheDir, fileName ?: "temp_image.jpg")
+
+                inputStream?.use { input ->
+                    FileOutputStream(tempFile!!).use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: run {
+                    Log.e("TranslateActivity", "InputStream is null for URI: $uri")
+                    Toast.makeText(this, "Failed to read the selected image. URI scheme: ${uri.scheme}, authority: ${uri.authority}", Toast.LENGTH_LONG).show()
+                    return
                 }
+
+                Log.d("TranslateActivity", "Copied gallery file to: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             }
 
-            if (!isImageFile(fileName)) {
+            // Check if file was successfully created and has content
+            if (tempFile == null || !tempFile!!.exists() || tempFile!!.length() == 0L) {
+                Log.e("TranslateActivity", "Temp file invalid: exists=${tempFile?.exists()}, size=${tempFile?.length()}")
+                Toast.makeText(this, "Failed to read the selected image.", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            if (!isImageFile(fileName ?: "")) {
                 Toast.makeText(this, "Please select an image file", Toast.LENGTH_SHORT).show()
                 return
             }
-            val compressedFile = compressImage(file)
+
+            val compressedFile = compressImage(tempFile!!)
             processImageUpload(compressedFile, uri, query, "image")
+
+            // Clean up original temp file for camera after successful processing
+            if (isFromCamera) {
+                photoFile = null
+            }
         } catch (e: Exception) {
             Log.e("TranslateActivity", "File processing failed: ${e.message}", e)
             Toast.makeText(this, "File processing failed: ${e.message}", Toast.LENGTH_LONG).show()
         } finally {
-            inputStream?.close()
+            if (!isFromCamera) {
+                tempFile?.delete() // Clean up gallery temp file if not camera
+            }
         }
     }
 
@@ -268,12 +362,13 @@ class TranslateActivity : MessageActivity() {
         val lowerCaseName = fileName.lowercase()
         return lowerCaseName.endsWith(".jpg") ||
                 lowerCaseName.endsWith(".jpeg") ||
-                lowerCaseName.endsWith(".png")
+                lowerCaseName.endsWith(".png") ||
+                lowerCaseName.endsWith(".heic") // Add support for HEIC if needed
     }
 
     private fun compressImage(inputFile: File): File {
         val maxSize = 1_000_000
-        val outputFile = File(cacheDir, "compressed_${inputFile.name}")
+        val outputFile = File(cacheDir, "compressed_${System.currentTimeMillis()}.png")
 
         try {
             val options = BitmapFactory.Options().apply {
@@ -290,21 +385,36 @@ class TranslateActivity : MessageActivity() {
             }
 
             var bitmap = BitmapFactory.decodeFile(inputFile.absolutePath, options)
+                ?: throw IllegalArgumentException("Cannot decode bitmap from file: ${inputFile.absolutePath}")
 
-            var quality = 90
+            // For PNG, compress with quality 0-100 (though PNG is lossless, this affects compression level)
             val baos = ByteArrayOutputStream()
-
+            var quality = 100
             do {
                 baos.reset()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+                bitmap.compress(Bitmap.CompressFormat.PNG, quality, baos)
+                if (quality <= 0) break
                 quality -= 10
-            } while (baos.size() > maxSize && quality > 10)
+            } while (baos.size() > maxSize)
+
+            if (baos.size() > maxSize) {
+                // If still too large, resize the bitmap further
+                val resizeFactor = Math.sqrt((baos.size() / maxSize).toDouble()).toInt()
+                if (resizeFactor > 1) {
+                    val resizedBitmap = Bitmap.createScaledBitmap(bitmap, bitmap.width / resizeFactor, bitmap.height / resizeFactor, true)
+                    bitmap.recycle()
+                    bitmap = resizedBitmap
+                    baos.reset()
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos)
+                }
+            }
 
             FileOutputStream(outputFile).use { fos ->
                 fos.write(baos.toByteArray())
             }
 
             bitmap.recycle()
+            Log.d("TranslateActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("TranslateActivity", "Image compression failed: ${e.message}", e)
@@ -312,8 +422,8 @@ class TranslateActivity : MessageActivity() {
         }
     }
 
-    private fun getFileName(uri: Uri): String {
-        var name = "unknown_file"
+    private fun getFileName(uri: Uri): String? {
+        var name: String? = null
         contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && nameIndex != -1) {
@@ -346,19 +456,24 @@ class TranslateActivity : MessageActivity() {
         val srcLang: String = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
+        // Encrypt the query and languages for consistency with text translation API
+        val encryptedQuery = RetrofitClient.encryptText(query)
+        val encryptedSrcLang = RetrofitClient.encryptText(srcLang)
+        val encryptedTgtLang = RetrofitClient.encryptText(tgtLang)
+
         lifecycleScope.launch(Dispatchers.IO) {
             runOnUiThread { progressBar.visibility = View.VISIBLE }
             try {
                 val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                val queryPart = query.toRequestBody("text/plain".toMediaType())
+                val queryPart = encryptedQuery.toRequestBody("text/plain".toMediaType())
                 Log.d("TranslateActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                Log.d("TranslateActivity", "Query: $query, src_lang: $srcLang, tgt_lang: $tgtLang")
+                Log.d("TranslateActivity", "Encrypted Query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
                 val response = RetrofitClient.apiService(this@TranslateActivity).visualQuery(
                     filePart,
                     queryPart,
-                    srcLang,
-                    tgtLang,
+                    encryptedSrcLang,
+                    encryptedTgtLang,
                     RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
@@ -377,7 +492,9 @@ class TranslateActivity : MessageActivity() {
                 }
             } finally {
                 runOnUiThread { progressBar.visibility = View.GONE }
-                file.delete()
+                if (file.exists()) {
+                    file.delete()
+                }
             }
         }
     }
@@ -388,6 +505,14 @@ class TranslateActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Final cleanup for any lingering camera temp file (unlikely, but safe)
+        photoFile?.let { file ->
+            if (file.exists()) {
+                file.delete()
+            }
+        }
+        photoFile = null
+        currentPhotoUri = null
         Log.d("TranslateActivity", "onDestroy called")
     }
 
@@ -397,10 +522,22 @@ class TranslateActivity : MessageActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == READ_STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
-            // Permission granted, user can now pick images
+        when (requestCode) {
+            READ_STORAGE_PERMISSION_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted, user can now pick images from storage
+                } else {
+                    Toast.makeText(this, "Storage permission denied. Cannot access gallery images.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            CAMERA_PERMISSION_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted, can now launch camera
+                    launchCamera()
+                } else {
+                    Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }

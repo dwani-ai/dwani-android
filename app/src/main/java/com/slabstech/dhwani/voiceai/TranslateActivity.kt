@@ -39,7 +39,7 @@ class TranslateActivity : MessageActivity() {
 
         setSupportActionBar(toolbar)
         setupMessageList()
-        //setupBottomNavigation(R.id.nav_translate)
+        setupBottomNavigation(R.id.nav_translate)
 
         // Set default source language to Kannada
         val languageValues = resources.getStringArray(R.array.language_values)

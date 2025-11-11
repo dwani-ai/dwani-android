@@ -11,6 +11,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -24,6 +26,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -49,6 +52,7 @@ import java.util.*
 class DocsActivity : AppCompatActivity() {
 
     private val READ_STORAGE_PERMISSION_CODE = 101
+    private val CAMERA_PERMISSION_CODE = 102
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var progressBar: ProgressBar
     private lateinit var ttsProgressBar: ProgressBar
@@ -70,13 +74,33 @@ class DocsActivity : AppCompatActivity() {
 
     // Launcher for non-visual files (PDF, Audio) using traditional GetContent
     private val pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { handleFileUpload(it, selectedFileType) }
+        uri?.let { handleFileUpload(it, selectedFileType, false) }
     }
 
     // Launcher for images using Photo Picker (Android 13+ recommended, falls back on older)
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { handleFileUpload(it, "image") }
+        uri?.let { handleFileUpload(it, "image", false) }
     }
+
+    // Launcher for camera capture
+    private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) {
+            currentPhotoUri?.let { uri -> handleFileUpload(uri, "image", true) }
+        } else {
+            // Clean up temp file if camera capture failed
+            photoFile?.let { file ->
+                if (file.exists()) {
+                    file.delete()
+                }
+            }
+        }
+        // Clean up references
+        photoFile = null
+        currentPhotoUri = null
+    }
+
+    private var photoFile: File? = null
+    private var currentPhotoUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDarkTheme = prefs.getBoolean("dark_theme", false)
@@ -104,7 +128,7 @@ class DocsActivity : AppCompatActivity() {
 
             // Handle insets manually (top and bottom padding)
             ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout)) { view, insets ->
-                val systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                val systemInsets = insets.getInsets(    WindowInsetsCompat.Type.systemBars())
                 view.setPadding(0, systemInsets.top, 0, systemInsets.bottom)
                 insets
             }
@@ -132,6 +156,16 @@ class DocsActivity : AppCompatActivity() {
                         READ_STORAGE_PERMISSION_CODE
                     )
                 }
+            }
+
+            // Request camera permission if not granted
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.CAMERA),
+                    CAMERA_PERMISSION_CODE
+                )
             }
 
             attachFab.setOnClickListener {
@@ -184,21 +218,25 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun showFileTypeSelectionDialog() {
-        val options = arrayOf("Image", "PDF", "Audio")
+        val options = arrayOf("Camera", "Gallery", "PDF", "Audio")
         AlertDialog.Builder(this)
             .setTitle("Select File Type")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
                         selectedFileType = "image"
+                        launchCamera()
+                    }
+                    1 -> {
+                        selectedFileType = "image"
                         // Use Photo Picker for images (permissionless on Android 13+)
                         pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
-                    1 -> {
+                    2 -> {
                         selectedFileType = "pdf"
                         pickFileLauncher.launch("application/pdf")
                     }
-                    2 -> {
+                    3 -> {
                         selectedFileType = "audio"
                         pickFileLauncher.launch("audio/*")
                     }
@@ -206,6 +244,29 @@ class DocsActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun launchCamera() {
+        val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
+            return
+        }
+        currentPhotoUri = createTempImageFileUri()
+        currentPhotoUri?.let { takePictureLauncher.launch(it) }
+    }
+
+    private fun createTempImageFileUri(): Uri? {
+        return try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val imageFileName = "JPEG_" + timeStamp + "_"
+            photoFile = File.createTempFile(imageFileName, ".jpg", cacheDir)
+            FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile!!)
+        } catch (e: Exception) {
+            Log.e("DocsActivity", "Failed to create temp image file: ${e.message}", e)
+            Toast.makeText(this, "Failed to prepare camera", Toast.LENGTH_SHORT).show()
+            null
+        }
     }
 
     override fun onResume() {
@@ -303,27 +364,55 @@ class DocsActivity : AppCompatActivity() {
         return lowerCaseLanguage
     }
 
-    private fun handleFileUpload(uri: Uri, fileType: String?) {
+    private fun handleFileUpload(uri: Uri, fileType: String?, isFromCamera: Boolean) {
+        Log.d("DocsActivity", "Handling file upload for URI: $uri, fileType: $fileType, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        val inputStream = contentResolver.openInputStream(uri)
-        val file = File(cacheDir, fileName)
+        Log.d("DocsActivity", "File name: $fileName")
         var query = "Describe the content"
 
+        var inputFile: File? = null
+
         try {
-            inputStream?.use { input ->
-                FileOutputStream(file).use { output ->
-                    input.copyTo(output)
+            if (isFromCamera) {
+                inputFile = photoFile
+                Log.d("DocsActivity", "Using camera photo file: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
+            } else {
+                // For gallery/non-camera, copy from inputStream
+                val inputStream = contentResolver.openInputStream(uri)
+                inputFile = File(cacheDir, fileName ?: "temp_file.${fileType}")
+
+                inputStream?.use { input ->
+                    FileOutputStream(inputFile!!).use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: run {
+                    Log.e("DocsActivity", "InputStream is null for URI: $uri")
+                    Toast.makeText(this, "Failed to read the selected file. URI scheme: ${uri.scheme}, authority: ${uri.authority}", Toast.LENGTH_LONG).show()
+                    return
                 }
+
+                Log.d("DocsActivity", "Copied file to: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
+            }
+
+            // Check if file was successfully created and has content
+            if (inputFile == null || !inputFile!!.exists() || inputFile!!.length() == 0L) {
+                Log.e("DocsActivity", "Input file invalid: exists=${inputFile?.exists()}, size=${inputFile?.length()}")
+                Toast.makeText(this, "Failed to read the selected file.", Toast.LENGTH_SHORT).show()
+                return
             }
 
             when (fileType) {
                 "image" -> {
-                    if (!isImageFile(fileName)) {
+                    if (!isFromCamera && !isImageFile(fileName ?: "")) {
                         Toast.makeText(this, "Please select an image file", Toast.LENGTH_SHORT).show()
                         return
                     }
-                    val compressedFile = compressImage(file)
                     query = "Describe the image"
+                    val compressedFile = compressImage(inputFile!!)
+                    inputFile!!.delete() // Delete original after compression
+                    if (isFromCamera) {
+                        photoFile = null
+                    }
                     processFileUpload(compressedFile, uri, query, "image/png", false, "image")
                 }
                 "pdf" -> {
@@ -332,7 +421,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Summarize the PDF content"
-                    processFileUpload(file, uri, query, "application/pdf", true, "pdf")
+                    processFileUpload(inputFile!!, uri, query, "application/pdf", true, "pdf")
                 }
                 "audio" -> {
                     if (!isAudioFile(fileName)) {
@@ -340,7 +429,7 @@ class DocsActivity : AppCompatActivity() {
                         return
                     }
                     query = "Transcribe the audio"
-                    processFileUpload(file, uri, query, "audio/mpeg", false, "audio")
+                    processFileUpload(inputFile!!, uri, query, "audio/mpeg", false, "audio")
                 }
                 else -> {
                     Toast.makeText(this, "Invalid file type", Toast.LENGTH_SHORT).show()
@@ -350,8 +439,6 @@ class DocsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("DocsActivity", "File processing failed: ${e.message}", e)
             Toast.makeText(this, "File processing failed: ${e.message}", Toast.LENGTH_LONG).show()
-        } finally {
-            inputStream?.close()
         }
     }
 
@@ -387,7 +474,7 @@ class DocsActivity : AppCompatActivity() {
 
     private fun compressImage(inputFile: File): File {
         val maxSize = 1_000_000
-        val outputFile = File(cacheDir, "compressed_${inputFile.name}")
+        val outputFile = File(cacheDir, "compressed_${System.currentTimeMillis()}.png")
 
         try {
             val options = BitmapFactory.Options().apply {
@@ -404,21 +491,36 @@ class DocsActivity : AppCompatActivity() {
             }
 
             var bitmap = BitmapFactory.decodeFile(inputFile.absolutePath, options)
+                ?: throw IllegalArgumentException("Cannot decode bitmap from file: ${inputFile.absolutePath}")
 
-            var quality = 90
+            // For PNG, compress with quality 0-100 (though PNG is lossless, this affects compression level)
             val baos = ByteArrayOutputStream()
-
+            var quality = 100
             do {
                 baos.reset()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+                bitmap.compress(Bitmap.CompressFormat.PNG, quality, baos)
+                if (quality <= 0) break
                 quality -= 10
-            } while (baos.size() > maxSize && quality > 10)
+            } while (baos.size() > maxSize)
+
+            if (baos.size() > maxSize) {
+                // If still too large, resize the bitmap further
+                val resizeFactor = Math.sqrt((baos.size() / maxSize).toDouble()).toInt()
+                if (resizeFactor > 1) {
+                    val resizedBitmap = Bitmap.createScaledBitmap(bitmap, bitmap.width / resizeFactor, bitmap.height / resizeFactor, true)
+                    bitmap.recycle()
+                    bitmap = resizedBitmap
+                    baos.reset()
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos)
+                }
+            }
 
             FileOutputStream(outputFile).use { fos ->
                 fos.write(baos.toByteArray())
             }
 
             bitmap.recycle()
+            Log.d("DocsActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
@@ -537,7 +639,7 @@ class DocsActivity : AppCompatActivity() {
             "german" to "deu_Latn",
             "telugu" to "tel_Telu"
         )
-        val srcLang: String = languageMap[selectedLanguage].toString()
+        val srcLang: String = languageMap[selectedLanguage] ?: "kan_Knda"
         val tgtLang = srcLang
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -606,7 +708,7 @@ class DocsActivity : AppCompatActivity() {
             "german" to "deu_Latn",
             "telugu" to "tel_Telu"
         )
-        val srcLang: String = languageMap[validSrcLang].toString()
+        val srcLang: String = languageMap[validSrcLang] ?: "kan_Knda"
         val tgtLang = srcLang
         val pageNumber = "1" // Summarize only the first page
         val model = "gemma3"
@@ -662,16 +764,38 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // Final cleanup for any lingering camera temp file (unlikely, but safe)
+        photoFile?.let { file ->
+            if (file.exists()) {
+                file.delete()
+            }
+        }
+        photoFile = null
+        currentPhotoUri = null
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == READ_STORAGE_PERMISSION_CODE && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
-            showFileTypeSelectionDialog()
+        when (requestCode) {
+            READ_STORAGE_PERMISSION_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    showFileTypeSelectionDialog()
+                }
+            }
+            CAMERA_PERMISSION_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted, can now launch camera
+                    launchCamera()
+                } else {
+                    Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }

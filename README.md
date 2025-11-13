@@ -4,6 +4,9 @@
 
 It provides including voice detection, translation, document processing, and interactive answers. 
 
+-- 
+[Google Play Link](https://play.google.com/store/apps/details?id=com.slabstech.dhwani.voiceai)
+--
 
 ### Release Notes
 - Update the dwani Server URL in below files , replace example.com with your dwani API server

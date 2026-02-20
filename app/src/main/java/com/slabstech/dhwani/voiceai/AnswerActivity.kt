@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -87,8 +88,23 @@ class AnswerActivity : MessageActivity() {
 
     private var photoFile: File? = null
     private var currentPhotoUri: Uri? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
 
     override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            getSessionRepository().getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,19 +130,19 @@ class AnswerActivity : MessageActivity() {
         setupBottomNavigation(R.id.nav_answer)
         setupInsets()
 
+        // Get session ID from Intent or create/get current session
+        val intentSessionId = intent.getStringExtra("SESSION_ID")
         lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
-                getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
-            }
-            currentSessionId = session.id
-            getSessionRepository().getMessages(session.id).collectLatest { list ->
-                withContext(Dispatchers.Main) {
-                    messageList.clear()
-                    messageList.addAll(list)
-                    messageAdapter.notifyDataSetChanged()
-                    scrollToLatestMessage()
+                if (intentSessionId != null) {
+                    getSessionRepository().getSession(intentSessionId)
+                        ?: getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
+                } else {
+                    getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
                 }
             }
+            currentSessionId = session.id
+            loadMessagesForSession(session.id)
         }
 
         // Preferences initialization
@@ -672,6 +688,43 @@ class AnswerActivity : MessageActivity() {
         }
         photoFile = null
         currentPhotoUri = null
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.ANSWER,
+            onSessionSelected = { sessionId ->
+                switchToSession(sessionId)
+            },
+            onNewSessionRequested = {
+                createNewSession()
+            }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = getSessionRepository().createSession(SessionType.ANSWER, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(

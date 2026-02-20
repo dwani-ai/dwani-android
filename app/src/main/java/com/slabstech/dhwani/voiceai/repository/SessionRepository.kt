@@ -77,7 +77,22 @@ class SessionRepository(private val context: Context) {
         )
         messageDao.insert(message)
         updateSessionUpdatedAt(sessionId)
+        if (sortOrder == 0 && isQuery) {
+            updateSessionTitleFromFirstQuery(sessionId, text)
+        }
         return message
+    }
+
+    private suspend fun updateSessionTitleFromFirstQuery(sessionId: String, messageText: String) {
+        val session = sessionDao.getSessionById(sessionId) ?: return
+        if (session.title != null) return
+        val title = messageText
+            .replace(Regex("^(Query:|Input:|Voice Query:)\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^Image translation\\.\\.\\.?$", RegexOption.IGNORE_CASE), "Image")
+            .trim()
+            .take(MAX_SESSION_TITLE_LENGTH)
+            .ifBlank { "New chat" }
+        sessionDao.update(session.copy(title = title, updatedAt = System.currentTimeMillis()))
     }
 
     suspend fun addMessageWithAttachment(
@@ -169,6 +184,7 @@ class SessionRepository(private val context: Context) {
 
     companion object {
         private const val ATTACHMENTS_DIR = "attachments"
+        private const val MAX_SESSION_TITLE_LENGTH = 50
     }
 }
 

@@ -74,11 +74,9 @@ class DocsActivity : AppCompatActivity() {
         get() = (application as DhwaniApp).sessionRepository
 
     private fun loadMessagesForSession(sessionId: String) {
-        Log.d("DocsActivity", "loadMessagesForSession: sessionId=$sessionId")
         messageCollectionJob?.cancel()
         messageCollectionJob = lifecycleScope.launch {
             sessionRepository.getMessages(sessionId).collectLatest { list ->
-                Log.d("DocsActivity", "Messages loaded: count=${list.size}")
                 withContext(Dispatchers.Main) {
                     messageList.clear()
                     messageList.addAll(list)
@@ -174,7 +172,6 @@ class DocsActivity : AppCompatActivity() {
 
             // Get session ID from Intent or create/get current session
             val intentSessionId = intent.getStringExtra("SESSION_ID")
-            Log.d("DocsActivity", "onCreate: intentSessionId=$intentSessionId")
             lifecycleScope.launch {
                 val session = withContext(Dispatchers.IO) {
                     if (intentSessionId != null) {
@@ -184,7 +181,6 @@ class DocsActivity : AppCompatActivity() {
                         sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
                     }
                 }
-                Log.d("DocsActivity", "Session loaded: id=${session.id}, type=${session.type}")
                 withContext(Dispatchers.Main) {
                     currentSessionId = session.id
                     loadMessagesForSession(session.id)
@@ -353,7 +349,6 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_sessions -> {
-                Log.d("DocsActivity", "Opening session list bottom sheet")
                 showSessionListBottomSheet()
                 true
             }
@@ -362,17 +357,10 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun showSessionListBottomSheet() {
-        Log.d("DocsActivity", "showSessionListBottomSheet called")
         val bottomSheet = SessionListBottomSheet.newInstance(
             sessionType = SessionType.DOCS,
-            onSessionSelected = { sessionId ->
-                Log.d("DocsActivity", "Session selected from bottom sheet: $sessionId")
-                switchToSession(sessionId)
-            },
-            onNewSessionRequested = {
-                Log.d("DocsActivity", "New session requested")
-                createNewSession()
-            }
+            onSessionSelected = { sessionId -> switchToSession(sessionId) },
+            onNewSessionRequested = { createNewSession() }
         )
         bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
     }
@@ -458,9 +446,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun handleFileUpload(uri: Uri, fileType: String?, isFromCamera: Boolean) {
-        Log.d("DocsActivity", "Handling file upload for URI: $uri, fileType: $fileType, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        Log.d("DocsActivity", "File name: $fileName")
         var query = "Describe the content"
 
         var inputFile: File? = null
@@ -468,7 +454,6 @@ class DocsActivity : AppCompatActivity() {
         try {
             if (isFromCamera) {
                 inputFile = photoFile
-                Log.d("DocsActivity", "Using camera photo file: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
             } else {
                 // For gallery/non-camera, copy from inputStream
                 val inputStream = contentResolver.openInputStream(uri)
@@ -483,8 +468,6 @@ class DocsActivity : AppCompatActivity() {
                     Toast.makeText(this, "Failed to read the selected file. URI scheme: ${uri.scheme}, authority: ${uri.authority}", Toast.LENGTH_LONG).show()
                     return
                 }
-
-                Log.d("DocsActivity", "Copied file to: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
             }
 
             // Check if file was successfully created and has content
@@ -614,7 +597,6 @@ class DocsActivity : AppCompatActivity() {
             }
 
             bitmap.recycle()
-            Log.d("DocsActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
@@ -666,8 +648,6 @@ class DocsActivity : AppCompatActivity() {
                 // Prepare multipart request
                 val requestFile = tempFile.asRequestBody("audio/mpeg".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
-
-                Log.d("DocsActivity", "Transcribing audio - name: ${file.name}, size: ${file.length()}, language: $apiLanguage")
 
                 // Call the transcription API
                 val response = RetrofitClient.apiService(this@DocsActivity).transcribeAudio(
@@ -751,8 +731,6 @@ class DocsActivity : AppCompatActivity() {
                 val requestFile = file.asRequestBody(mediaType.toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = query.toRequestBody("text/plain".toMediaType())
-                Log.d("DocsActivity", "File part - name: ${file.name}, size: ${file.length()}, type: $mediaType")
-                Log.d("DocsActivity", "Query: $query, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -834,8 +812,6 @@ class DocsActivity : AppCompatActivity() {
                 val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
                 val modelPart = model.toRequestBody("text/plain".toMediaType())
 
-                Log.d("DocsActivity", "PDF file - name: ${file.name}, size: ${file.length()}")
-                Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
                     filePart,
                     tgtLang = tgtLangPart,

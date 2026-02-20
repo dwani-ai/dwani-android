@@ -55,7 +55,6 @@ class SessionListBottomSheet : BottomSheetDialogFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         repository = (requireActivity().application as DhwaniApp).sessionRepository
-        android.util.Log.d("SessionListBottomSheet", "onViewCreated: sessionType=${sessionType.value}")
 
         sessionsRecyclerView = view.findViewById(R.id.sessionsRecyclerView)
         newChatButton = view.findViewById(R.id.newChatButton)
@@ -63,7 +62,6 @@ class SessionListBottomSheet : BottomSheetDialogFragment() {
         adapter = SessionAdapter(
             sessions = emptyList(),
             onSessionClick = { session ->
-                android.util.Log.d("SessionListBottomSheet", "Session clicked: ${session.id}")
                 onSessionSelected?.invoke(session.id)
                 dismiss()
             },
@@ -76,7 +74,6 @@ class SessionListBottomSheet : BottomSheetDialogFragment() {
         sessionsRecyclerView.adapter = adapter
 
         newChatButton.setOnClickListener {
-            android.util.Log.d("SessionListBottomSheet", "New chat button clicked")
             onNewSessionRequested?.invoke()
             dismiss()
         }
@@ -88,11 +85,9 @@ class SessionListBottomSheet : BottomSheetDialogFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 repository.getSessions(sessionType).collect { sessions ->
-                    android.util.Log.d("SessionListBottomSheet", "Sessions loaded: type=${sessionType.value}, count=${sessions.size}")
                     adapter = SessionAdapter(
                         sessions = sessions,
                         onSessionClick = { session ->
-                            android.util.Log.d("SessionListBottomSheet", "Session selected: ${session.id}")
                             onSessionSelected?.invoke(session.id)
                             dismiss()
                         },

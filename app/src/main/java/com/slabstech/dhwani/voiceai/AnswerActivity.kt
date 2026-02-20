@@ -259,7 +259,6 @@ class AnswerActivity : MessageActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(0, systemBars.top, 0, 0) // Top padding for status bar
-            Log.d("AnswerActivity", "RootView insets applied: top=${systemBars.top}")
             insets
         }
 
@@ -267,14 +266,12 @@ class AnswerActivity : MessageActivity() {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
             view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 8) // Buffer for spacing
-            Log.d("AnswerActivity", "BottomBar padding updated: bottom=${imeInsets.bottom + systemBars.bottom + 8}")
             insets
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updatePadding(bottom = systemBars.bottom)
-            Log.d("AnswerActivity", "BottomNav padding updated: bottom=${systemBars.bottom}")
             insets
         }
     }
@@ -294,7 +291,6 @@ class AnswerActivity : MessageActivity() {
 
     override fun onResume() {
         super.onResume()
-        Log.d("AnswerActivity", "onResume called")
         updateRecyclerViewPadding() // Refresh padding on resume
         scrollToLatestMessage() // Ensure latest message is visible
     }
@@ -450,8 +446,6 @@ class AnswerActivity : MessageActivity() {
                 val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = encryptedQuery.toRequestBody("text/plain".toMediaType())
-                Log.d("AnswerActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                Log.d("AnswerActivity", "Encrypted Query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
                 val response = RetrofitClient.apiService(this@AnswerActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -506,7 +500,6 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
-        Log.d("AnswerActivity", "Handling image upload for URI: $uri, fromCamera: $isFromCamera")
         val query = textQueryInput.text.toString().trim()
         if (query.isEmpty()) {
             Toast.makeText(this, "Please enter a query for the image", Toast.LENGTH_SHORT).show()
@@ -519,7 +512,6 @@ class AnswerActivity : MessageActivity() {
             if (isFromCamera && photoFile != null && photoFile!!.exists()) {
                 // For camera, use the photoFile directly
                 tempFile = photoFile
-                Log.d("AnswerActivity", "Using camera photo file: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             } else {
                 // Fallback for non-camera (not used currently)
                 Log.w("AnswerActivity", "Non-camera image upload not implemented")
@@ -627,7 +619,6 @@ class AnswerActivity : MessageActivity() {
             }
 
             bitmap.recycle()
-            Log.d("AnswerActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("AnswerActivity", "Image compression failed: ${e.message}", e)

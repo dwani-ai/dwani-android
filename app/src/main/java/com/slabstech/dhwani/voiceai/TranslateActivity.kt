@@ -85,11 +85,9 @@ class TranslateActivity : MessageActivity() {
     override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
 
     private fun loadMessagesForSession(sessionId: String) {
-        Log.d("TranslateActivity", "loadMessagesForSession: sessionId=$sessionId")
         messageCollectionJob?.cancel()
         messageCollectionJob = lifecycleScope.launch {
             getSessionRepository().getMessages(sessionId).collectLatest { list ->
-                Log.d("TranslateActivity", "Messages loaded: count=${list.size}")
                 withContext(Dispatchers.Main) {
                     messageList.clear()
                     messageList.addAll(list)
@@ -102,7 +100,6 @@ class TranslateActivity : MessageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("TranslateActivity", "onCreate called")
         setContentView(R.layout.activity_translate)
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
@@ -121,7 +118,6 @@ class TranslateActivity : MessageActivity() {
 
         // Get session ID from Intent or create/get current session
         val intentSessionId = intent.getStringExtra("SESSION_ID")
-        Log.d("TranslateActivity", "onCreate: intentSessionId=$intentSessionId")
         lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
                 if (intentSessionId != null) {
@@ -131,7 +127,6 @@ class TranslateActivity : MessageActivity() {
                     getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
                 }
             }
-            Log.d("TranslateActivity", "Session loaded: id=${session.id}, type=${session.type}")
             withContext(Dispatchers.Main) {
                 currentSessionId = session.id
                 loadMessagesForSession(session.id)
@@ -170,14 +165,8 @@ class TranslateActivity : MessageActivity() {
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
-                val sessionId = currentSessionId
-                if (sessionId == null) {
-                    Log.e("TranslateActivity", "currentSessionId is null, cannot save message")
-                    Toast.makeText(this, "Session not initialized", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
+                val sessionId = currentSessionId ?: return@setOnClickListener
                 val timestamp = DateUtils.getCurrentTimestamp()
-                Log.d("TranslateActivity", "Adding message to session: $sessionId")
                 lifecycleScope.launch(Dispatchers.IO) {
                     getSessionRepository().addMessage(sessionId, "Input: $query", timestamp, isQuery = true, null, null)
                 }
@@ -258,7 +247,6 @@ class TranslateActivity : MessageActivity() {
 
     override fun onResume() {
         super.onResume()
-        Log.d("TranslateActivity", "onResume called")
     }
 
     private fun getTranslationResponse(input: String) {
@@ -338,9 +326,7 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
-        Log.d("TranslateActivity", "Handling image upload for URI: $uri, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        Log.d("TranslateActivity", "File name: $fileName")
         val query = "Extract text from image"
 
         var tempFile: File? = null
@@ -349,7 +335,6 @@ class TranslateActivity : MessageActivity() {
             if (isFromCamera && photoFile != null && photoFile!!.exists()) {
                 // For camera, use the photoFile directly
                 tempFile = photoFile
-                Log.d("TranslateActivity", "Using camera photo file: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             } else {
                 // For gallery, copy from inputStream
                 val inputStream = contentResolver.openInputStream(uri)
@@ -365,7 +350,6 @@ class TranslateActivity : MessageActivity() {
                     return
                 }
 
-                Log.d("TranslateActivity", "Copied gallery file to: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             }
 
             // Check if file was successfully created and has content
@@ -464,7 +448,6 @@ class TranslateActivity : MessageActivity() {
             }
 
             bitmap.recycle()
-            Log.d("TranslateActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("TranslateActivity", "Image compression failed: ${e.message}", e)
@@ -517,8 +500,6 @@ class TranslateActivity : MessageActivity() {
                 val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = encryptedQuery.toRequestBody("text/plain".toMediaType())
-                Log.d("TranslateActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                Log.d("TranslateActivity", "Encrypted Query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
                 val response = RetrofitClient.apiService(this@TranslateActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -552,10 +533,8 @@ class TranslateActivity : MessageActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        Log.d("TranslateActivity", "onOptionsItemSelected: itemId=${item.itemId}")
         return when (item.itemId) {
             R.id.action_sessions -> {
-                Log.d("TranslateActivity", "Opening session list bottom sheet")
                 showSessionListBottomSheet()
                 true
             }
@@ -564,17 +543,10 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun showSessionListBottomSheet() {
-        Log.d("TranslateActivity", "showSessionListBottomSheet called")
         val bottomSheet = SessionListBottomSheet.newInstance(
             sessionType = SessionType.TRANSLATE,
-            onSessionSelected = { sessionId ->
-                Log.d("TranslateActivity", "Session selected from bottom sheet: $sessionId")
-                switchToSession(sessionId)
-            },
-            onNewSessionRequested = {
-                Log.d("TranslateActivity", "New session requested")
-                createNewSession()
-            }
+            onSessionSelected = { sessionId -> switchToSession(sessionId) },
+            onNewSessionRequested = { createNewSession() }
         )
         bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
     }
@@ -607,7 +579,6 @@ class TranslateActivity : MessageActivity() {
         }
         photoFile = null
         currentPhotoUri = null
-        Log.d("TranslateActivity", "onDestroy called")
     }
 
     override fun onRequestPermissionsResult(

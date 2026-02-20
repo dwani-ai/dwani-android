@@ -109,7 +109,7 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://mobi<le-ap>i"
+    private const val BASE_URL_DEFAULT = "https://mobile-"
     private const val API_KEY = "what-sss-sss-not-ssweresda" // Replace with your actual API key
 
     fun encryptAudio(audio: ByteArray): ByteArray {

@@ -3,9 +3,12 @@ package com.slabstech.dhwani.voiceai
 import android.app.Application
 import android.content.Context
 import androidx.work.*
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
 import java.util.concurrent.TimeUnit
 
 class DhwaniApp : Application() {
+    val sessionRepository: SessionRepository by lazy { SessionRepository(applicationContext) }
+
     override fun onCreate() {
         super.onCreate()
         scheduleTokenRefresh()

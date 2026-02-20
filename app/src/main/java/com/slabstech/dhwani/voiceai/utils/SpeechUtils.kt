@@ -98,6 +98,7 @@ object SpeechUtils {
                     if (audioFile.exists() && audioFile.length() > 0) {
                         // Create a new Message with uri and fileType
                         val updatedMessage = Message(
+                            id = message.id,
                             text = message.text,
                             timestamp = message.timestamp,
                             isQuery = message.isQuery,

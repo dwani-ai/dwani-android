@@ -13,15 +13,27 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
 import android.util.Log
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 abstract class MessageActivity : AuthenticatedActivity() {
     protected lateinit var historyRecyclerView: RecyclerView
     protected lateinit var messageAdapter: MessageAdapter
     protected val messageList = mutableListOf<Message>()
+
+    /** If non-null, messages are persisted and delete uses repository. */
+    protected var currentSessionId: String? = null
+
+    /** Override to enable session persistence (e.g. return (application as DhwaniApp).sessionRepository). */
+    protected open fun getSessionRepository(): SessionRepository? = null
 
     protected fun setupMessageList() {
         messageAdapter = MessageAdapter(messageList, { position ->
@@ -50,9 +62,16 @@ abstract class MessageActivity : AuthenticatedActivity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
-                        messageList.removeAt(position)
-                        messageAdapter.notifyItemRemoved(position)
-                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        val repo = getSessionRepository()
+                        if (message.id != null && repo != null && currentSessionId != null) {
+                            lifecycleScope.launch {
+                                repo.deleteMessage(message.id!!)
+                            }
+                        } else {
+                            messageList.removeAt(position)
+                            messageAdapter.notifyItemRemoved(position)
+                            messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        }
                     }
                     1 -> shareMessage(message)
                     2 -> copyMessage(message)

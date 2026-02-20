@@ -40,7 +40,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -84,6 +88,8 @@ class AnswerActivity : MessageActivity() {
     private var photoFile: File? = null
     private var currentPhotoUri: Uri? = null
 
+    override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -107,6 +113,21 @@ class AnswerActivity : MessageActivity() {
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
         setupInsets()
+
+        lifecycleScope.launch {
+            val session = withContext(Dispatchers.IO) {
+                getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
+            }
+            currentSessionId = session.id
+            getSessionRepository().getMessages(session.id).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    scrollToLatestMessage()
+                }
+            }
+        }
 
         // Preferences initialization
         if (!prefs.contains(AUTO_PLAY_KEY)) {
@@ -243,12 +264,11 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun submitQuery(query: String) {
+        val sessionId = currentSessionId ?: return
         val timestamp = DateUtils.getCurrentTimestamp()
-        val message = Message("Query: $query", timestamp, true, null, null)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        Log.d("AnswerActivity", "Message added, scrolling to position: ${messageList.size - 1}")
-        scrollToLatestMessage()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessage(sessionId, "Query: $query", timestamp, isQuery = true, null, null)
+        }
         getChatResponse(query)
         textQueryInput.text.clear()
         // Hide keyboard after sending
@@ -303,11 +323,14 @@ class AnswerActivity : MessageActivity() {
                     val timestamp = DateUtils.getCurrentTimestamp()
 
                     if (voiceQueryText.isNotEmpty()) {
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        Log.d("AnswerActivity", "Voice message added, scrolling to position: ${messageList.size - 1}")
-                        scrollToLatestMessage()
+                        val sid = currentSessionId
+                        if (sid != null) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                getSessionRepository().addMessageWithAttachment(
+                                    sid, "Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio"
+                                )
+                            }
+                        }
                         getChatResponse(voiceQueryText)
                     } else {
                         Toast.makeText(this@AnswerActivity, "Voice query empty", Toast.LENGTH_SHORT).show()
@@ -351,23 +374,35 @@ class AnswerActivity : MessageActivity() {
                 onSuccess = { response ->
                     val answerText = response.response
                     val timestamp = DateUtils.getCurrentTimestamp()
-                    val message = Message("Answer: $answerText", timestamp, false, null, null)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    Log.d("AnswerActivity", "Chat response added, scrolling to position: ${messageList.size - 1}")
-                    scrollToLatestMessage()
-                    SpeechUtils.textToSpeech(
-                        context = this@AnswerActivity,
-                        scope = lifecycleScope,
-                        text = answerText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = langCode
-                    )
+                    val sid = currentSessionId ?: return@performApiCall
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val chatMsg = getSessionRepository().addMessage(
+                            sid, "Answer: $answerText", timestamp, isQuery = false, null, null
+                        )
+                        withContext(Dispatchers.Main) {
+                            val message = Message(
+                                text = chatMsg.text,
+                                timestamp = chatMsg.timestamp,
+                                isQuery = false,
+                                uri = null,
+                                fileType = null,
+                                id = chatMsg.id
+                            )
+                            scrollToLatestMessage()
+                            SpeechUtils.textToSpeech(
+                                context = this@AnswerActivity,
+                                scope = lifecycleScope,
+                                text = answerText,
+                                message = message,
+                                recyclerView = historyRecyclerView,
+                                adapter = messageAdapter,
+                                ttsProgressBarVisibility = { visible ->
+                                    ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                                },
+                                srcLang = langCode
+                            )
+                        }
+                    }
                 },
                 onError = { e -> Log.e("AnswerActivity", "Chat failed: ${e.message}", e) }
             )
@@ -410,12 +445,13 @@ class AnswerActivity : MessageActivity() {
                 )
                 val answerText = response.answer
                 val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Answer: $answerText", timestamp, false, null, null)
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    scrollToLatestMessage()
+                val sid = currentSessionId
+                if (sid != null) {
+                    getSessionRepository().addMessage(
+                        sid, "Answer: $answerText", timestamp, isQuery = false, null, null
+                    )
                 }
+                runOnUiThread { scrollToLatestMessage() }
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Image analysis failed: ${e.message}", e)
                 runOnUiThread {
@@ -505,12 +541,13 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun processImageUpload(file: File, uri: Uri, query: String, fileType: String) {
+        val sessionId = currentSessionId ?: return
         val timestamp = DateUtils.getCurrentTimestamp()
-        val message = Message("Query: $query (with image)", timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        Log.d("AnswerActivity", "Image message added, scrolling to position: ${messageList.size - 1}")
-        scrollToLatestMessage()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessageWithAttachment(
+                sessionId, "Query: $query (with image)", timestamp, true, uri, fileType
+            )
+        }
         textQueryInput.text.clear()
         // Hide keyboard after sending
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager

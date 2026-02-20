@@ -29,11 +29,19 @@ abstract class MessageActivity : AuthenticatedActivity() {
     protected lateinit var messageAdapter: MessageAdapter
     protected val messageList = mutableListOf<Message>()
 
+    /** Optional empty-state view; set in subclass onCreate to show hint when messageList is empty. */
+    protected var emptyStateView: View? = null
+
     /** If non-null, messages are persisted and delete uses repository. */
     protected var currentSessionId: String? = null
 
     /** Override to enable session persistence (e.g. return (application as DhwaniApp).sessionRepository). */
     protected open fun getSessionRepository(): SessionRepository? = null
+
+    /** Call after any change to messageList to show/hide the empty state. */
+    protected fun updateEmptyState() {
+        emptyStateView?.visibility = if (messageList.isEmpty()) View.VISIBLE else View.GONE
+    }
 
     protected fun setupMessageList() {
         messageAdapter = MessageAdapter(messageList, { position ->
@@ -72,6 +80,7 @@ abstract class MessageActivity : AuthenticatedActivity() {
                             messageAdapter.notifyItemRemoved(position)
                             messageAdapter.notifyItemRangeChanged(position, messageList.size)
                         }
+                        updateEmptyState()
                     }
                     1 -> shareMessage(message)
                     2 -> copyMessage(message)

@@ -4,4 +4,8 @@
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="source_language">Source Language</string>
     <string name="target_language">Target Language</string>
+    <string name="empty_state_answer">Type a message or hold the mic to start</string>
+    <string name="empty_state_translate">Type a sentence or attach an image to translate</string>
+    <string name="empty_state_docs">Attach an image, document, or audio to get started</string>
+    <string name="toolbar_chats_tap">Chats • Tap to switch</string>
 </resources>

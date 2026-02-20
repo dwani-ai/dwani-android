@@ -92,6 +92,7 @@ class TranslateActivity : MessageActivity() {
                     messageList.clear()
                     messageList.addAll(list)
                     messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
                     scrollToLatestMessage()
                 }
             }
@@ -113,8 +114,11 @@ class TranslateActivity : MessageActivity() {
         toolbar = findViewById(R.id.toolbar)
 
         setSupportActionBar(toolbar)
+        emptyStateView = findViewById(R.id.emptyStateView)
         setupMessageList()
         setupBottomNavigation(R.id.nav_translate)
+
+        findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
         // Get session ID from Intent or create/get current session
         val intentSessionId = intent.getStringExtra("SESSION_ID")
@@ -186,19 +190,20 @@ class TranslateActivity : MessageActivity() {
             launchCamera()
         }
 
+        sendButton.visibility = View.VISIBLE
         textQueryInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: Editable?) {
-                if (s.isNullOrEmpty()) {
-                    sendButton.visibility = View.GONE
-                } else {
-                    sendButton.visibility = View.VISIBLE
-                }
+                val hasText = !s.isNullOrEmpty()
+                sendButton.isEnabled = hasText
+                sendButton.alpha = if (hasText) 1f else 0.5f
             }
         })
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.5f
 
         // Optional: Handle spinner item selection changes if needed
         sourceLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {

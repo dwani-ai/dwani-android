@@ -69,9 +69,14 @@ class DocsActivity : AppCompatActivity() {
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     private var currentSessionId: String? = null
     private var messageCollectionJob: kotlinx.coroutines.Job? = null
+    private var emptyStateView: View? = null
 
     private val sessionRepository: SessionRepository
         get() = (application as DhwaniApp).sessionRepository
+
+    private fun updateEmptyState() {
+        emptyStateView?.visibility = if (messageList.isEmpty()) View.VISIBLE else View.GONE
+    }
 
     private fun loadMessagesForSession(sessionId: String) {
         messageCollectionJob?.cancel()
@@ -81,6 +86,7 @@ class DocsActivity : AppCompatActivity() {
                     messageList.clear()
                     messageList.addAll(list)
                     messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
                     scrollToLatestMessage()
                 }
             }
@@ -158,6 +164,7 @@ class DocsActivity : AppCompatActivity() {
             }
 
             setSupportActionBar(toolbar)
+            emptyStateView = findViewById(R.id.emptyStateView)
 
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
@@ -208,6 +215,8 @@ class DocsActivity : AppCompatActivity() {
                     CAMERA_PERMISSION_CODE
                 )
             }
+
+            findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
             attachFab.setOnClickListener {
                 showFileTypeSelectionDialog()
@@ -345,6 +354,7 @@ class DocsActivity : AppCompatActivity() {
                 } else {
                     messageList.clear()
                     messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
                 }
                 true
             }

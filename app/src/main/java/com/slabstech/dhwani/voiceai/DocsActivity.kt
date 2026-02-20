@@ -14,6 +14,7 @@ import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.util.Log.e
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -36,9 +37,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -62,6 +67,25 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private var currentSessionId: String? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
+
+    private val sessionRepository: SessionRepository
+        get() = (application as DhwaniApp).sessionRepository
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            sessionRepository.getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     // List of allowed languages
     private val ALLOWED_LANGUAGES = listOf(
@@ -144,6 +168,21 @@ class DocsActivity : AppCompatActivity() {
                 adapter = messageAdapter
                 visibility = View.VISIBLE
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
+            }
+
+            // Get session ID from Intent or create/get current session
+            val intentSessionId = intent.getStringExtra("SESSION_ID")
+            lifecycleScope.launch {
+                val session = withContext(Dispatchers.IO) {
+                    if (intentSessionId != null) {
+                        sessionRepository.getSession(intentSessionId)
+                            ?: sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
+                    } else {
+                        sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
+                    }
+                }
+                currentSessionId = session.id
+                loadMessagesForSession(session.id)
             }
 
             // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
@@ -296,11 +335,49 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_clear -> {
-                messageList.clear()
-                messageAdapter.notifyDataSetChanged()
+                val sid = currentSessionId
+                if (sid != null) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        sessionRepository.deleteAllMessagesInSession(sid)
+                    }
+                } else {
+                    messageList.clear()
+                    messageAdapter.notifyDataSetChanged()
+                }
+                true
+            }
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.DOCS,
+            onSessionSelected = { sessionId ->
+                switchToSession(sessionId)
+            },
+            onNewSessionRequested = {
+                createNewSession()
+            }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = sessionRepository.createSession(SessionType.DOCS, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
+            }
         }
     }
 
@@ -313,9 +390,15 @@ class DocsActivity : AppCompatActivity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
-                        messageList.removeAt(position)
-                        messageAdapter.notifyItemRemoved(position)
-                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        if (message.id != null && currentSessionId != null) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                sessionRepository.deleteMessage(message.id!!)
+                            }
+                        } else {
+                            messageList.removeAt(position)
+                            messageAdapter.notifyItemRemoved(position)
+                            messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        }
                     }
                     1 -> shareMessage(message)
                     2 -> copyMessage(message)
@@ -457,12 +540,13 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String, isPdf: Boolean, fileType: String) {
-        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message(query, timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        historyRecyclerView.requestLayout()
-        scrollToLatestMessage()
+        val sessionId = currentSessionId ?: return
+        val timestamp = DateUtils.getCurrentTimestamp()
+        lifecycleScope.launch(Dispatchers.IO) {
+            sessionRepository.addMessageWithAttachment(
+                sessionId, query, timestamp, true, uri, fileType
+            )
+        }
         if (isPdf) {
             getPdfSummaryResponse(file, uri, fileType)
         } else if (mediaType == "audio/mpeg") {
@@ -588,28 +672,37 @@ class DocsActivity : AppCompatActivity() {
                     throw Exception("Empty transcription received")
                 }
 
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Transcription: $transcriptionText", timestamp, false, uri, fileType)
-
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    // Optional: Convert transcription to speech
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = transcriptionText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = apiLanguage
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessageWithAttachment(
+                        sid, "Transcription: $transcriptionText", timestamp, false, uri, fileType
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = uri,
+                        fileType = fileType,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        // Optional: Convert transcription to speech
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = transcriptionText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = apiLanguage
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Transcription failed: ${e.message}", e)
@@ -658,26 +751,36 @@ class DocsActivity : AppCompatActivity() {
                     RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Answer: $answerText", timestamp, false, null, null) // No uri/fileType for response
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = answerText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = tgtLang
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessage(
+                        sid, "Answer: $answerText", timestamp, isQuery = false, null, null
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = null,
+                        fileType = null,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = answerText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = tgtLang
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Query failed: ${e.message}", e)
@@ -730,27 +833,36 @@ class DocsActivity : AppCompatActivity() {
                     apiKey = RetrofitClient.getApiKey()
                 )
                 val summaryText = response.translated_summary
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Summary: $summaryText", timestamp, false, uri, fileType)
-
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = summaryText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = tgtLang
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessage(
+                        sid, "Summary: $summaryText", timestamp, isQuery = false, null, fileType
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = uri,
+                        fileType = fileType,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = summaryText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = tgtLang
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "PDF summary failed: ${e.message}", e)

@@ -11,6 +11,7 @@ import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.EditText
@@ -25,8 +26,12 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -72,9 +77,26 @@ class TranslateActivity : MessageActivity() {
 
     private var photoFile: File? = null
     private var currentPhotoUri: Uri? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
 
     private val READ_STORAGE_PERMISSION_CODE = 101
     private val CAMERA_PERMISSION_CODE = 102
+
+    override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            getSessionRepository().getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +116,21 @@ class TranslateActivity : MessageActivity() {
         setSupportActionBar(toolbar)
         setupMessageList()
         setupBottomNavigation(R.id.nav_translate)
+
+        // Get session ID from Intent or create/get current session
+        val intentSessionId = intent.getStringExtra("SESSION_ID")
+        lifecycleScope.launch {
+            val session = withContext(Dispatchers.IO) {
+                if (intentSessionId != null) {
+                    getSessionRepository().getSession(intentSessionId)
+                        ?: getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
+                } else {
+                    getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
+                }
+            }
+            currentSessionId = session.id
+            loadMessagesForSession(session.id)
+        }
 
         // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -127,11 +164,11 @@ class TranslateActivity : MessageActivity() {
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
+                val sessionId = currentSessionId ?: return@setOnClickListener
                 val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Input: $query", timestamp, true, null, null)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                scrollToLatestMessage()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    getSessionRepository().addMessage(sessionId, "Input: $query", timestamp, isQuery = true, null, null)
+                }
                 getTranslationResponse(query)
                 textQueryInput.text.clear()
             } else {
@@ -278,10 +315,10 @@ class TranslateActivity : MessageActivity() {
                 onSuccess = { response ->
                     val translatedText = response.translations.joinToString("\n")
                     val timestamp = DateUtils.getCurrentTimestamp()
-                    val message = Message("Translation: $translatedText", timestamp, false, null, null)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    scrollToLatestMessage()
+                    val sid = currentSessionId ?: return@performApiCall
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        getSessionRepository().addMessage(sid, "Translation: $translatedText", timestamp, isQuery = false, null, null)
+                    }
                 },
                 onError = { e -> Log.e("TranslateActivity", "Translation failed: ${e.message}", e) }
             )
@@ -349,12 +386,13 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun processImageUpload(file: File, uri: Uri, query: String, fileType: String) {
-        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message("Image translation...", timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        historyRecyclerView.requestLayout()
-        scrollToLatestMessage()
+        val sessionId = currentSessionId ?: return
+        val timestamp = DateUtils.getCurrentTimestamp()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessageWithAttachment(
+                sessionId, "Image translation...", timestamp, true, uri, fileType
+            )
+        }
         getVisualQueryResponse(query, file, fileType)
     }
 
@@ -477,12 +515,14 @@ class TranslateActivity : MessageActivity() {
                     RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Translation: $answerText", timestamp, false, null, null) // No uri/fileType for response
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    getSessionRepository().addMessage(
+                        sid, "Translation: $answerText", timestamp, isQuery = false, null, null
+                    )
+                }
                 runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
                     scrollToLatestMessage()
                 }
             } catch (e: Exception) {
@@ -495,6 +535,43 @@ class TranslateActivity : MessageActivity() {
                 if (file.exists()) {
                     file.delete()
                 }
+            }
+        }
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.TRANSLATE,
+            onSessionSelected = { sessionId ->
+                switchToSession(sessionId)
+            },
+            onNewSessionRequested = {
+                createNewSession()
+            }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = getSessionRepository().createSession(SessionType.TRANSLATE, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
             }
         }
     }

@@ -23,5 +23,5 @@
         android:id="@+id/action_sessions"
         android:title="Sessions"
         android:icon="@android:drawable/ic_menu_sort_by_size"
-        app:showAsAction="ifRoom"/>
+        app:showAsAction="always"/>
 </menu>

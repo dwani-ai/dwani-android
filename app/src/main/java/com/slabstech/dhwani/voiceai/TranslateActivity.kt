@@ -85,9 +85,11 @@ class TranslateActivity : MessageActivity() {
     override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
 
     private fun loadMessagesForSession(sessionId: String) {
+        Log.d("TranslateActivity", "loadMessagesForSession: sessionId=$sessionId")
         messageCollectionJob?.cancel()
         messageCollectionJob = lifecycleScope.launch {
             getSessionRepository().getMessages(sessionId).collectLatest { list ->
+                Log.d("TranslateActivity", "Messages loaded: count=${list.size}")
                 withContext(Dispatchers.Main) {
                     messageList.clear()
                     messageList.addAll(list)
@@ -119,6 +121,7 @@ class TranslateActivity : MessageActivity() {
 
         // Get session ID from Intent or create/get current session
         val intentSessionId = intent.getStringExtra("SESSION_ID")
+        Log.d("TranslateActivity", "onCreate: intentSessionId=$intentSessionId")
         lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
                 if (intentSessionId != null) {
@@ -128,8 +131,11 @@ class TranslateActivity : MessageActivity() {
                     getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
                 }
             }
-            currentSessionId = session.id
-            loadMessagesForSession(session.id)
+            Log.d("TranslateActivity", "Session loaded: id=${session.id}, type=${session.type}")
+            withContext(Dispatchers.Main) {
+                currentSessionId = session.id
+                loadMessagesForSession(session.id)
+            }
         }
 
         // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
@@ -164,8 +170,14 @@ class TranslateActivity : MessageActivity() {
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
-                val sessionId = currentSessionId ?: return@setOnClickListener
+                val sessionId = currentSessionId
+                if (sessionId == null) {
+                    Log.e("TranslateActivity", "currentSessionId is null, cannot save message")
+                    Toast.makeText(this, "Session not initialized", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
                 val timestamp = DateUtils.getCurrentTimestamp()
+                Log.d("TranslateActivity", "Adding message to session: $sessionId")
                 lifecycleScope.launch(Dispatchers.IO) {
                     getSessionRepository().addMessage(sessionId, "Input: $query", timestamp, isQuery = true, null, null)
                 }
@@ -540,8 +552,10 @@ class TranslateActivity : MessageActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        Log.d("TranslateActivity", "onOptionsItemSelected: itemId=${item.itemId}")
         return when (item.itemId) {
             R.id.action_sessions -> {
+                Log.d("TranslateActivity", "Opening session list bottom sheet")
                 showSessionListBottomSheet()
                 true
             }
@@ -550,12 +564,15 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun showSessionListBottomSheet() {
+        Log.d("TranslateActivity", "showSessionListBottomSheet called")
         val bottomSheet = SessionListBottomSheet.newInstance(
             sessionType = SessionType.TRANSLATE,
             onSessionSelected = { sessionId ->
+                Log.d("TranslateActivity", "Session selected from bottom sheet: $sessionId")
                 switchToSession(sessionId)
             },
             onNewSessionRequested = {
+                Log.d("TranslateActivity", "New session requested")
                 createNewSession()
             }
         )

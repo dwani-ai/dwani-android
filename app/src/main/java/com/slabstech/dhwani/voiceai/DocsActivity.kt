@@ -74,9 +74,11 @@ class DocsActivity : AppCompatActivity() {
         get() = (application as DhwaniApp).sessionRepository
 
     private fun loadMessagesForSession(sessionId: String) {
+        Log.d("DocsActivity", "loadMessagesForSession: sessionId=$sessionId")
         messageCollectionJob?.cancel()
         messageCollectionJob = lifecycleScope.launch {
             sessionRepository.getMessages(sessionId).collectLatest { list ->
+                Log.d("DocsActivity", "Messages loaded: count=${list.size}")
                 withContext(Dispatchers.Main) {
                     messageList.clear()
                     messageList.addAll(list)
@@ -172,6 +174,7 @@ class DocsActivity : AppCompatActivity() {
 
             // Get session ID from Intent or create/get current session
             val intentSessionId = intent.getStringExtra("SESSION_ID")
+            Log.d("DocsActivity", "onCreate: intentSessionId=$intentSessionId")
             lifecycleScope.launch {
                 val session = withContext(Dispatchers.IO) {
                     if (intentSessionId != null) {
@@ -181,8 +184,11 @@ class DocsActivity : AppCompatActivity() {
                         sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
                     }
                 }
-                currentSessionId = session.id
-                loadMessagesForSession(session.id)
+                Log.d("DocsActivity", "Session loaded: id=${session.id}, type=${session.type}")
+                withContext(Dispatchers.Main) {
+                    currentSessionId = session.id
+                    loadMessagesForSession(session.id)
+                }
             }
 
             // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
@@ -347,6 +353,7 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_sessions -> {
+                Log.d("DocsActivity", "Opening session list bottom sheet")
                 showSessionListBottomSheet()
                 true
             }
@@ -355,12 +362,15 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun showSessionListBottomSheet() {
+        Log.d("DocsActivity", "showSessionListBottomSheet called")
         val bottomSheet = SessionListBottomSheet.newInstance(
             sessionType = SessionType.DOCS,
             onSessionSelected = { sessionId ->
+                Log.d("DocsActivity", "Session selected from bottom sheet: $sessionId")
                 switchToSession(sessionId)
             },
             onNewSessionRequested = {
+                Log.d("DocsActivity", "New session requested")
                 createNewSession()
             }
         )

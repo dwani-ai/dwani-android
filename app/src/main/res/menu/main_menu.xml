@@ -19,4 +19,9 @@
         android:title="Target Language"
         app:actionLayout="@layout/spinner_action_view"
         app:showAsAction="always"/>
+    <item
+        android:id="@+id/action_sessions"
+        android:title="Sessions"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        app:showAsAction="always"/>
 </menu>

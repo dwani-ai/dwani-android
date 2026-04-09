@@ -130,8 +130,8 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun proceedToVoiceDetectionActivity() {
-        Log.d(TAG, "Proceeding to VoiceDetectionActivity")
-        startActivity(Intent(this@LoginActivity, VoiceDetectionActivity::class.java))
+        Log.d(TAG, "Proceeding to VoiceAssistantActivity")
+        startActivity(Intent(this@LoginActivity, VoiceAssistantActivity::class.java))
         finish()
     }
 

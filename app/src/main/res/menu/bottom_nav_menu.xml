@@ -2,11 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
-        android:id="@+id/nav_vision"
-        android:title="vision"
-        android:visible="false"
-        />
-    <item
         android:id="@+id/nav_voice"
         android:title="voice"
         android:visible="false"
@@ -16,13 +11,12 @@
         android:icon="@android:drawable/ic_menu_help"
         android:title="answer"/>
     <item
+        android:id="@+id/nav_assistant"
+        android:icon="@drawable/ic_mic"
+        android:title="@string/nav_assistant"/>
+    <item
         android:id="@+id/nav_translate"
         android:icon="@android:drawable/ic_menu_search"
         android:title="translate"
         />
-
-    <item
-        android:id="@+id/nav_docs"
-        android:icon="@android:drawable/ic_menu_gallery"
-        android:title="docs"/>
 </menu>

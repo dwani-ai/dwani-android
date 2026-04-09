@@ -15,9 +15,16 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
 
+/** Call [requestStop] on finger-up to end recording; matches [startPushToTalkRecording]. */
+fun interface HoldToTalkController {
+    fun requestStop()
+}
+
 object AudioUtils {
+    private const val MIN_HOLD_TO_TALK_DURATION_MS = 400L
     private const val SAMPLE_RATE = 16000
     private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
@@ -90,16 +97,19 @@ object AudioUtils {
         }.start()
     }
 
+    /**
+     * Hold-to-talk: call [HoldToTalkController.requestStop] on ACTION_UP / ACTION_CANCEL.
+     * Invokes [onRecordingStopped] on the main thread when recording ends.
+     */
     fun startPushToTalkRecording(
         context: Context,
         audioLevelBar: ProgressBar,
         onRecordingStarted: () -> Unit,
         onRecordingStopped: (File?) -> Unit
-    ) {
+    ): HoldToTalkController? {
         if (!PermissionUtils.checkAndRequestPermission(context, Manifest.permission.RECORD_AUDIO, 100)) {
             Toast.makeText(context, "Permission denied", Toast.LENGTH_SHORT).show()
-            onRecordingStopped(null)
-            return
+            return null
         }
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
@@ -111,18 +121,26 @@ object AudioUtils {
             bufferSize
         )
 
-        val audioFile = File(context.cacheDir, "temp_audio.wav")
+        val audioFile = File(context.cacheDir, "temp_audio_${System.currentTimeMillis()}.wav")
         val audioBuffer = ByteArray(bufferSize)
         val recordedData = mutableListOf<Byte>()
-        var isRecording = true
+        val stopRequested = AtomicBoolean(false)
 
         val recordingStartTime = System.currentTimeMillis()
         audioRecord.startRecording()
         onRecordingStarted()
 
+        val controller = HoldToTalkController {
+            stopRequested.set(true)
+            try {
+                audioRecord.stop()
+            } catch (_: Exception) {
+            }
+        }
+
         Thread {
             try {
-                while (isRecording) {
+                while (!stopRequested.get()) {
                     val bytesRead = audioRecord.read(audioBuffer, 0, bufferSize)
                     if (bytesRead > 0) {
                         recordedData.addAll(audioBuffer.take(bytesRead))
@@ -130,20 +148,33 @@ object AudioUtils {
                         (context as? AppCompatActivity)?.runOnUiThread {
                             audioLevelBar.progress = (rms * 100).toInt().coerceIn(0, 100)
                         }
+                    } else if (bytesRead < 0) {
+                        break
                     }
                 }
             } finally {
-                audioRecord.stop()
-                audioRecord.release()
+                try {
+                    audioRecord.stop()
+                } catch (_: Exception) {
+                }
+                try {
+                    audioRecord.release()
+                } catch (_: Exception) {
+                }
                 val duration = System.currentTimeMillis() - recordingStartTime
-                if (duration >= 1000L) {
+                val file = if (duration >= MIN_HOLD_TO_TALK_DURATION_MS) {
                     writeWavFile(recordedData.toByteArray(), audioFile)
-                    onRecordingStopped(audioFile)
+                    audioFile
                 } else {
-                    onRecordingStopped(null)
+                    null
+                }
+                (context as? AppCompatActivity)?.runOnUiThread {
+                    onRecordingStopped(file)
                 }
             }
         }.start()
+
+        return controller
     }
 
     fun stopRecording(audioRecord: AudioRecord?, isRecording: Boolean) {

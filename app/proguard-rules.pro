@@ -1,20 +1,26 @@
-# Keep Retrofit interfaces
--keep class retrofit2.* { *; }
-
-# Keep model classes used in API responses
--keep class com.slabstech.dhwani.voiceai.models.** { *; }
-
-# Keep Gson/Moshi annotations
+# --- Gson + Kotlin API models (R8 renames JVM fields; Gson needs stable JSON names) ---
 -keepattributes Signature
 -keepattributes *Annotation*
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
 
-# Prevent obfuscation of classes used by Retrofit and Gson
--keep class com.google.gson.* { *; }
--keep class retrofit2.converter.gson.* { *; }
+-keep class com.slabstech.dhwani.voiceai.LoginRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.RegisterRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.TokenResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.TranscriptionRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.TranscriptionResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.ChatRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.ChatResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.TranslationRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.TranslationResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.VisualQueryRequest { *; }
+-keep class com.slabstech.dhwani.voiceai.VisualQueryResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.ExtractTextResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.DocumentSummaryResponse { *; }
+-keep class com.slabstech.dhwani.voiceai.Page { *; }
+-keep class com.slabstech.dhwani.voiceai.PdfSummaryResponse { *; }
 
-# Keep OkHttp classes
--keep class okhttp3.* { *; }
--keep class okio.* { *; }
+# Retrofit / OkHttp ship consumer rules; avoid blanket -keep on okhttp3/retrofit2 (hurts shrinking).
 
-# Prevent stripping of lifecycle-related classes
+# --- AndroidX / lifecycle (minimal) ---
 -keep class androidx.lifecycle.** { *; }

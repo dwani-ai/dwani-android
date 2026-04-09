@@ -8,12 +8,12 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.util.Log.e
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -36,9 +36,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -51,8 +55,8 @@ import java.util.*
 
 class DocsActivity : AppCompatActivity() {
 
-    private val READ_STORAGE_PERMISSION_CODE = 101
     private val CAMERA_PERMISSION_CODE = 102
+    private var pendingCameraAfterPermission = false
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var progressBar: ProgressBar
     private lateinit var ttsProgressBar: ProgressBar
@@ -62,6 +66,31 @@ class DocsActivity : AppCompatActivity() {
     private lateinit var messageAdapter: MessageAdapter
     private var currentTheme: Boolean? = null
     private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private var currentSessionId: String? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
+    private var emptyStateView: View? = null
+
+    private val sessionRepository: SessionRepository
+        get() = (application as DhwaniApp).sessionRepository
+
+    private fun updateEmptyState() {
+        emptyStateView?.visibility = if (messageList.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            sessionRepository.getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     // List of allowed languages
     private val ALLOWED_LANGUAGES = listOf(
@@ -134,6 +163,7 @@ class DocsActivity : AppCompatActivity() {
             }
 
             setSupportActionBar(toolbar)
+            emptyStateView = findViewById(R.id.emptyStateView)
 
             messageAdapter = MessageAdapter(messageList, { position ->
                 showMessageOptionsDialog(position)
@@ -146,27 +176,31 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
-            // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                        READ_STORAGE_PERMISSION_CODE
-                    )
+            val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
+            val intentSessionId = intent.getStringExtra("SESSION_ID")
+            lifecycleScope.launch {
+                val session = withContext(Dispatchers.IO) {
+                    when {
+                        restoredSessionId != null -> {
+                            sessionRepository.getSession(restoredSessionId)
+                                ?: sessionRepository.createSession(SessionType.DOCS, null)
+                        }
+                        intentSessionId != null -> {
+                            sessionRepository.getSession(intentSessionId)
+                                ?: sessionRepository.createSession(SessionType.DOCS, null)
+                        }
+                        else -> {
+                            sessionRepository.createSession(SessionType.DOCS, null)
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    currentSessionId = session.id
+                    loadMessagesForSession(session.id)
                 }
             }
 
-            // Request camera permission if not granted
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.CAMERA),
-                    CAMERA_PERMISSION_CODE
-                )
-            }
+            findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
             attachFab.setOnClickListener {
                 showFileTypeSelectionDialog()
@@ -184,6 +218,16 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
+                    R.id.nav_assistant -> {
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Assistant?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, VoiceAssistantActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
+                    }
                     R.id.nav_voice -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Voice?")
@@ -194,22 +238,21 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
-                    R.id.nav_vision -> {
+                    R.id.nav_translate -> {
                         AlertDialog.Builder(this)
-                            .setMessage("Switch to Vision?")
+                            .setMessage("Switch to Translate?")
                             .setPositiveButton("Yes") { _, _ ->
-                                startActivity(Intent(this, VisionActivity::class.java))
+                                startActivity(Intent(this, TranslateActivity::class.java))
                             }
                             .setNegativeButton("No", null)
                             .show()
                         false
                     }
-                    R.id.nav_docs -> true
                     else -> false
                 }
             }
 
-            bottomNavigation.selectedItemId = R.id.nav_docs
+            bottomNavigation.selectedItemId = R.id.nav_answer
         } catch (e: Exception) {
             Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -229,8 +272,7 @@ class DocsActivity : AppCompatActivity() {
                     }
                     1 -> {
                         selectedFileType = "image"
-                        // Use Photo Picker for images (permissionless on Android 13+)
-                        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        launchGalleryPicker()
                     }
                     2 -> {
                         selectedFileType = "pdf"
@@ -246,12 +288,19 @@ class DocsActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun launchGalleryPicker() {
+        // Photo Picker / SAF does not require READ_MEDIA_* or READ_EXTERNAL_STORAGE.
+        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
     private fun launchCamera() {
         val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraAfterPermission = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
             return
         }
+        pendingCameraAfterPermission = false
         currentPhotoUri = createTempImageFileUri()
         currentPhotoUri?.let { takePictureLauncher.launch(it) }
     }
@@ -278,6 +327,11 @@ class DocsActivity : AppCompatActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        currentSessionId?.let { outState.putString(MessageActivity.STATE_CURRENT_SESSION_ID, it) }
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         menu.findItem(R.id.action_auto_scroll)?.isChecked = true
@@ -296,11 +350,46 @@ class DocsActivity : AppCompatActivity() {
                 true
             }
             R.id.action_clear -> {
-                messageList.clear()
-                messageAdapter.notifyDataSetChanged()
+                val sid = currentSessionId
+                if (sid != null) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        sessionRepository.deleteAllMessagesInSession(sid)
+                    }
+                } else {
+                    messageList.clear()
+                    messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
+                }
+                true
+            }
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.DOCS,
+            onSessionSelected = { sessionId -> switchToSession(sessionId) },
+            onNewSessionRequested = { createNewSession() }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = sessionRepository.createSession(SessionType.DOCS, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
+            }
         }
     }
 
@@ -313,9 +402,15 @@ class DocsActivity : AppCompatActivity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
-                        messageList.removeAt(position)
-                        messageAdapter.notifyItemRemoved(position)
-                        messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        if (message.id != null && currentSessionId != null) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                sessionRepository.deleteMessage(message.id!!)
+                            }
+                        } else {
+                            messageList.removeAt(position)
+                            messageAdapter.notifyItemRemoved(position)
+                            messageAdapter.notifyItemRangeChanged(position, messageList.size)
+                        }
                     }
                     1 -> shareMessage(message)
                     2 -> copyMessage(message)
@@ -365,9 +460,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun handleFileUpload(uri: Uri, fileType: String?, isFromCamera: Boolean) {
-        Log.d("DocsActivity", "Handling file upload for URI: $uri, fileType: $fileType, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        Log.d("DocsActivity", "File name: $fileName")
         var query = "Describe the content"
 
         var inputFile: File? = null
@@ -375,7 +468,6 @@ class DocsActivity : AppCompatActivity() {
         try {
             if (isFromCamera) {
                 inputFile = photoFile
-                Log.d("DocsActivity", "Using camera photo file: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
             } else {
                 // For gallery/non-camera, copy from inputStream
                 val inputStream = contentResolver.openInputStream(uri)
@@ -390,8 +482,6 @@ class DocsActivity : AppCompatActivity() {
                     Toast.makeText(this, "Failed to read the selected file. URI scheme: ${uri.scheme}, authority: ${uri.authority}", Toast.LENGTH_LONG).show()
                     return
                 }
-
-                Log.d("DocsActivity", "Copied file to: ${inputFile!!.absolutePath}, size: ${inputFile!!.length()}")
             }
 
             // Check if file was successfully created and has content
@@ -457,12 +547,13 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun processFileUpload(file: File, uri: Uri, query: String, mediaType: String, isPdf: Boolean, fileType: String) {
-        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message(query, timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        historyRecyclerView.requestLayout()
-        scrollToLatestMessage()
+        val sessionId = currentSessionId ?: return
+        val timestamp = DateUtils.getCurrentTimestamp()
+        lifecycleScope.launch(Dispatchers.IO) {
+            sessionRepository.addMessageWithAttachment(
+                sessionId, query, timestamp, true, uri, fileType
+            )
+        }
         if (isPdf) {
             getPdfSummaryResponse(file, uri, fileType)
         } else if (mediaType == "audio/mpeg") {
@@ -520,7 +611,6 @@ class DocsActivity : AppCompatActivity() {
             }
 
             bitmap.recycle()
-            Log.d("DocsActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("DocsActivity", "Image compression failed: ${e.message}", e)
@@ -573,8 +663,6 @@ class DocsActivity : AppCompatActivity() {
                 val requestFile = tempFile.asRequestBody("audio/mpeg".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
 
-                Log.d("DocsActivity", "Transcribing audio - name: ${file.name}, size: ${file.length()}, language: $apiLanguage")
-
                 // Call the transcription API
                 val response = RetrofitClient.apiService(this@DocsActivity).transcribeAudio(
                     audio = filePart,
@@ -588,28 +676,37 @@ class DocsActivity : AppCompatActivity() {
                     throw Exception("Empty transcription received")
                 }
 
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Transcription: $transcriptionText", timestamp, false, uri, fileType)
-
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    // Optional: Convert transcription to speech
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = transcriptionText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = apiLanguage
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessageWithAttachment(
+                        sid, "Transcription: $transcriptionText", timestamp, false, uri, fileType
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = uri,
+                        fileType = fileType,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        // Optional: Convert transcription to speech
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = transcriptionText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = apiLanguage
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Transcription failed: ${e.message}", e)
@@ -648,8 +745,6 @@ class DocsActivity : AppCompatActivity() {
                 val requestFile = file.asRequestBody(mediaType.toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = query.toRequestBody("text/plain".toMediaType())
-                Log.d("DocsActivity", "File part - name: ${file.name}, size: ${file.length()}, type: $mediaType")
-                Log.d("DocsActivity", "Query: $query, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -658,26 +753,36 @@ class DocsActivity : AppCompatActivity() {
                     RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Answer: $answerText", timestamp, false, null, null) // No uri/fileType for response
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = answerText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = tgtLang
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessage(
+                        sid, "Answer: $answerText", timestamp, isQuery = false, null, null
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = null,
+                        fileType = null,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = answerText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = tgtLang
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "Query failed: ${e.message}", e)
@@ -721,8 +826,6 @@ class DocsActivity : AppCompatActivity() {
                 val tgtLangPart = tgtLang.toRequestBody("text/plain".toMediaType())
                 val modelPart = model.toRequestBody("text/plain".toMediaType())
 
-                Log.d("DocsActivity", "PDF file - name: ${file.name}, size: ${file.length()}")
-                Log.d("DocsActivity", "page_number: $pageNumber, src_lang: $srcLang, tgt_lang: $tgtLang")
                 val response = RetrofitClient.apiService(this@DocsActivity).summarizePdf(
                     filePart,
                     tgtLang = tgtLangPart,
@@ -730,27 +833,36 @@ class DocsActivity : AppCompatActivity() {
                     apiKey = RetrofitClient.getApiKey()
                 )
                 val summaryText = response.translated_summary
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Summary: $summaryText", timestamp, false, uri, fileType)
-
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
-                    scrollToLatestMessage()
-
-                    SpeechUtils.textToSpeech(
-                        context = this@DocsActivity,
-                        scope = lifecycleScope,
-                        text = summaryText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = tgtLang
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    val chatMsg = sessionRepository.addMessage(
+                        sid, "Summary: $summaryText", timestamp, isQuery = false, null, fileType
                     )
+                    val message = Message(
+                        text = chatMsg.text,
+                        timestamp = chatMsg.timestamp,
+                        isQuery = false,
+                        uri = uri,
+                        fileType = fileType,
+                        id = chatMsg.id
+                    )
+                    runOnUiThread {
+                        scrollToLatestMessage()
+
+                        SpeechUtils.textToSpeech(
+                            context = this@DocsActivity,
+                            scope = lifecycleScope,
+                            text = summaryText,
+                            message = message,
+                            recyclerView = historyRecyclerView,
+                            adapter = messageAdapter,
+                            ttsProgressBarVisibility = { visible ->
+                                ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            },
+                            srcLang = tgtLang
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DocsActivity", "PDF summary failed: ${e.message}", e)
@@ -783,16 +895,14 @@ class DocsActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
-            READ_STORAGE_PERMISSION_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    showFileTypeSelectionDialog()
-                }
-            }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, can now launch camera
-                    launchCamera()
+                    if (pendingCameraAfterPermission) {
+                        pendingCameraAfterPermission = false
+                        launchCamera()
+                    }
                 } else {
+                    pendingCameraAfterPermission = false
                     Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
                 }
             }

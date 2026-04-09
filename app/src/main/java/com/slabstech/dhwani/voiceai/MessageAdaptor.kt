@@ -18,7 +18,8 @@ data class Message(
     val timestamp: String,
     val isQuery: Boolean,
     val uri: Uri? = null,
-    val fileType: String? = null // e.g., "image", "audio", "pdf"
+    val fileType: String? = null, // e.g., "image", "audio", "pdf"
+    val id: String? = null
 )
 class MessageAdapter(
     val messages: MutableList<Message>,

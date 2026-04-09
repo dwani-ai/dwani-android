@@ -64,7 +64,7 @@ class SettingsActivity : AppCompatActivity() {
             .writeTimeout(10, TimeUnit.SECONDS)
             .build()
 
-        private val defaultApiEndpoint = "https://mobile-api.dwani.ai"
+        private val defaultApiEndpoint = RetrofitClient.DEFAULT_API_ENDPOINT
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.preferences, rootKey)

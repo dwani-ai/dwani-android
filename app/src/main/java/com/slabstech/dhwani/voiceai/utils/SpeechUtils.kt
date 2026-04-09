@@ -98,6 +98,7 @@ object SpeechUtils {
                     if (audioFile.exists() && audioFile.length() > 0) {
                         // Create a new Message with uri and fileType
                         val updatedMessage = Message(
+                            id = message.id,
                             text = message.text,
                             timestamp = message.timestamp,
                             isQuery = message.isQuery,
@@ -151,6 +152,124 @@ object SpeechUtils {
                 Log.e("SpeechUtils", "TTS failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    ttsProgressBarVisibility(false)
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetches audio from the TTS endpoint and plays it. When [forcePlay] is true, ignores the global
+     * `tts_enabled` preference (for voice-assistant style flows).
+     */
+    fun playTtsStandalone(
+        context: Context,
+        scope: LifecycleCoroutineScope,
+        text: String,
+        forcePlay: Boolean = true,
+        ttsProgressBarVisibility: (Boolean) -> Unit,
+        onPlayerReady: (MediaPlayer) -> Unit = {},
+        onPlaybackComplete: () -> Unit = {},
+        onTtsFailed: () -> Unit = {}
+    ) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        if (!forcePlay && !prefs.getBoolean("tts_enabled", false)) {
+            Log.d("SpeechUtils", "TTS disabled in preferences")
+            return
+        }
+
+        val truncatedText = if (text.length > MAX_TTS_INPUT_LENGTH) {
+            Log.w("SpeechUtils", "Input text too long (${text.length} chars), truncating")
+            text.substring(0, MAX_TTS_INPUT_LENGTH)
+        } else {
+            text
+        }
+
+        scope.launch {
+            ttsProgressBarVisibility(true)
+            val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+            val supportedLanguage = when (selectedLanguage.lowercase()) {
+                "hindi" -> "hindi"
+                "tamil" -> "tamil"
+                "english" -> "english"
+                "german" -> "german"
+                else -> "kannada"
+            }
+            try {
+                Log.d("SpeechUtils", "playTtsStandalone input length: ${truncatedText.length}")
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.apiService(context).textToSpeech(
+                        input = truncatedText,
+                        apiKey = RetrofitClient.getApiKey(),
+                        language = supportedLanguage
+                    )
+                }
+                val audioBytes = withContext(Dispatchers.IO) {
+                    response.byteStream().use { it.readBytes() }
+                }
+                if (audioBytes.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "TTS returned empty audio", Toast.LENGTH_SHORT).show()
+                        onTtsFailed()
+                    }
+                    return@launch
+                }
+                val audioFile = File(context.cacheDir, "temp_standalone_tts_${System.currentTimeMillis()}.mp3")
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(audioFile).use { fos -> fos.write(audioBytes) }
+                }
+                withContext(Dispatchers.Main) {
+                    val player = MediaPlayer()
+                    try {
+                        player.setDataSource(audioFile.absolutePath)
+                        player.prepare()
+                        player.setOnCompletionListener {
+                            it.release()
+                            if (audioFile.exists()) audioFile.delete()
+                            onPlaybackComplete()
+                        }
+                        player.setOnErrorListener { mp, _, _ ->
+                            mp.release()
+                            if (audioFile.exists()) audioFile.delete()
+                            onTtsFailed()
+                            true
+                        }
+                        player.start()
+                        onPlayerReady(player)
+                    } catch (e: Exception) {
+                        Log.e("SpeechUtils", "playTtsStandalone playback: ${e.message}", e)
+                        player.release()
+                        if (audioFile.exists()) audioFile.delete()
+                        Toast.makeText(context, "Playback failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        onTtsFailed()
+                    }
+                }
+            } catch (e: SocketTimeoutException) {
+                Log.e("SpeechUtils", "TTS timeout: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Text-to-speech timed out. Please try again.", Toast.LENGTH_LONG).show()
+                    onTtsFailed()
+                }
+            } catch (e: retrofit2.HttpException) {
+                Log.e("SpeechUtils", "TTS HTTP error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
+                    onTtsFailed()
+                }
+            } catch (e: IOException) {
+                Log.e("SpeechUtils", "TTS IO error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "TTS network error: ${e.message}", Toast.LENGTH_LONG).show()
+                    onTtsFailed()
+                }
+            } catch (e: Exception) {
+                Log.e("SpeechUtils", "playTtsStandalone failed: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "TTS error: ${e.message}", Toast.LENGTH_LONG).show()
+                    onTtsFailed()
                 }
             } finally {
                 withContext(Dispatchers.Main) {

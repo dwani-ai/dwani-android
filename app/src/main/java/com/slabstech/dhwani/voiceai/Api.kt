@@ -109,7 +109,15 @@ interface ApiService {
 }
 
 object RetrofitClient {
-    private const val BASE_URL_DEFAULT = "https://mobi<le-ap>i"
+    /** Must match settings default; no trailing slash (stored/compared in preferences as host URL). */
+    const val DEFAULT_API_ENDPOINT = "https://mobile"
+
+    private fun retrofitBaseUrl(prefsUrl: String): String {
+        val trimmed = prefsUrl.trim().trimEnd('/')
+        if (trimmed.isEmpty()) return "$DEFAULT_API_ENDPOINT/"
+        return "$trimmed/"
+    }
+
     private const val API_KEY = "what-sss-sss-not-ssweresda" // Replace with your actual API key
 
     fun encryptAudio(audio: ByteArray): ByteArray {
@@ -135,7 +143,9 @@ object RetrofitClient {
 
     fun apiService(context: Context): ApiService {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val baseUrl = prefs.getString("api_endpoint", BASE_URL_DEFAULT) ?: BASE_URL_DEFAULT
+        val baseUrl = retrofitBaseUrl(
+            prefs.getString("api_endpoint", DEFAULT_API_ENDPOINT) ?: DEFAULT_API_ENDPOINT
+        )
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(getOkHttpClient())

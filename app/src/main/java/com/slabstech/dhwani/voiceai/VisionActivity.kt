@@ -1,7 +1,5 @@
 package com.slabstech.dhwani.voiceai
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
@@ -16,8 +14,6 @@ import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +30,6 @@ import java.io.FileOutputStream
 
 class VisionActivity : AppCompatActivity() {
 
-    private val RECORD_AUDIO_PERMISSION_CODE = 101
     private val SAMPLE_RATE = 16000
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
@@ -71,14 +66,6 @@ class VisionActivity : AppCompatActivity() {
         clockTickAnimation = AnimationUtils.loadAnimation(this, R.anim.clock_tick)
 
         setSupportActionBar(toolbar)
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
 
         toggleRecordButton.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) startRecording() else stopRecording()

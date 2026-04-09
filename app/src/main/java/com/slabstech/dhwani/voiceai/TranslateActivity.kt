@@ -5,12 +5,12 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.EditText
@@ -18,15 +18,21 @@ import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.Toast
+import androidx.preference.PreferenceManager
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
+import androidx.core.view.WindowCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -46,7 +52,33 @@ class TranslateActivity : MessageActivity() {
     private lateinit var cameraButton: ImageButton
     private lateinit var sourceLanguageSpinner: Spinner
     private lateinit var targetLanguageSpinner: Spinner
+    private lateinit var swapLanguagesButton: ImageButton
     private lateinit var toolbar: Toolbar
+
+    private val translatePrefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+
+    companion object {
+        private const val PREF_TRANSLATE_SOURCE_VALUE = "translate_source_language_value"
+        private const val PREF_TRANSLATE_TARGET_CODE = "translate_target_language_code"
+
+        /** Lowercase keys from [R.array.language_values] → API script codes. */
+        private val LANGUAGE_VALUE_TO_API_CODE: Map<String, String> = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu",
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
+        )
+    }
 
     // Launcher for gallery images using Photo Picker (Android 13+ recommended, falls back on older)
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -72,14 +104,33 @@ class TranslateActivity : MessageActivity() {
 
     private var photoFile: File? = null
     private var currentPhotoUri: Uri? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
 
-    private val READ_STORAGE_PERMISSION_CODE = 101
     private val CAMERA_PERMISSION_CODE = 102
+    private var pendingCameraAfterPermission = false
+
+    override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            getSessionRepository().getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("TranslateActivity", "onCreate called")
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_translate)
+        setupAnswerStyleWindowInsets()
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
         progressBar = findViewById(R.id.progressBar)
@@ -89,49 +140,52 @@ class TranslateActivity : MessageActivity() {
         cameraButton = findViewById(R.id.cameraButton)
         sourceLanguageSpinner = findViewById(R.id.sourceLanguageSpinner)
         targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
+        swapLanguagesButton = findViewById(R.id.swapLanguagesButton)
         toolbar = findViewById(R.id.toolbar)
 
         setSupportActionBar(toolbar)
+        emptyStateView = findViewById(R.id.emptyStateView)
         setupMessageList()
         setupBottomNavigation(R.id.nav_translate)
 
-        // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    READ_STORAGE_PERMISSION_CODE
-                )
+        findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
+
+        val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
+        val intentSessionId = intent.getStringExtra("SESSION_ID")
+        lifecycleScope.launch {
+            val session = withContext(Dispatchers.IO) {
+                when {
+                    restoredSessionId != null -> {
+                        getSessionRepository().getSession(restoredSessionId)
+                            ?: getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
+                    intentSessionId != null -> {
+                        getSessionRepository().getSession(intentSessionId)
+                            ?: getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
+                    else -> {
+                        getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                currentSessionId = session.id
+                loadMessagesForSession(session.id)
             }
         }
 
-        // Request camera permission if not granted
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                CAMERA_PERMISSION_CODE
-            )
-        }
+        applySavedLanguageSelections()
 
-        // Set default source language to Kannada
-        val languageValues = resources.getStringArray(R.array.language_values)
-        val defaultSourceIndex = languageValues.indexOf("kannada")
-        if (defaultSourceIndex != -1) {
-            sourceLanguageSpinner.setSelection(defaultSourceIndex)
-        }
+        swapLanguagesButton.setOnClickListener { swapSourceAndTargetLanguages() }
 
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
             if (query.isNotEmpty()) {
+                val sessionId = currentSessionId ?: return@setOnClickListener
                 val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Input: $query", timestamp, true, null, null)
-                messageList.add(message)
-                messageAdapter.notifyItemInserted(messageList.size - 1)
-                scrollToLatestMessage()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    getSessionRepository().addMessage(sessionId, "Input: $query", timestamp, isQuery = true, null, null)
+                }
                 getTranslationResponse(query)
                 textQueryInput.text.clear()
             } else {
@@ -140,56 +194,120 @@ class TranslateActivity : MessageActivity() {
         }
 
         attachImageButton.setOnClickListener {
-            // Use Photo Picker for images (permissionless on Android 13+)
-            pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            launchGalleryPicker()
         }
 
         cameraButton.setOnClickListener {
             launchCamera()
         }
 
+        sendButton.visibility = View.VISIBLE
         textQueryInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: Editable?) {
-                if (s.isNullOrEmpty()) {
-                    sendButton.visibility = View.GONE
-                } else {
-                    sendButton.visibility = View.VISIBLE
-                }
+                val hasText = !s.isNullOrEmpty()
+                sendButton.isEnabled = hasText
+                sendButton.alpha = if (hasText) 1f else 0.5f
             }
         })
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.5f
 
-        // Optional: Handle spinner item selection changes if needed
         sourceLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // Handle source language change if needed
+                saveLanguageSelections()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                // Handle no selection
-            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         targetLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // Handle target language change if needed
+                saveLanguageSelections()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                // Handle no selection
-            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+    }
+
+    private fun applySavedLanguageSelections() {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val savedSource = translatePrefs.getString(PREF_TRANSLATE_SOURCE_VALUE, null)
+        val savedTargetCode = translatePrefs.getString(PREF_TRANSLATE_TARGET_CODE, null)
+
+        val sourceIndex = when {
+            savedSource != null -> languageValues.indexOf(savedSource).takeIf { it >= 0 }
+            else -> null
+        } ?: languageValues.indexOf("kannada").takeIf { it >= 0 } ?: 0
+
+        val targetIndex = when {
+            savedTargetCode != null -> targetCodes.indexOf(savedTargetCode).takeIf { it >= 0 }
+            else -> null
+        } ?: targetCodes.indexOf("eng_Latn").takeIf { it >= 0 } ?: 0
+
+        sourceLanguageSpinner.setSelection(sourceIndex, false)
+        targetLanguageSpinner.setSelection(targetIndex, false)
+    }
+
+    private fun saveLanguageSelections() {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val srcPos = sourceLanguageSpinner.selectedItemPosition
+        val tgtPos = targetLanguageSpinner.selectedItemPosition
+        if (srcPos !in languageValues.indices || tgtPos !in targetCodes.indices) return
+        translatePrefs.edit()
+            .putString(PREF_TRANSLATE_SOURCE_VALUE, languageValues[srcPos])
+            .putString(PREF_TRANSLATE_TARGET_CODE, targetCodes[tgtPos])
+            .apply()
+    }
+
+    private fun apiCodeForSourceSpinnerIndex(index: Int): String {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        if (index !in languageValues.indices) return "kan_Knda"
+        return LANGUAGE_VALUE_TO_API_CODE[languageValues[index]] ?: "kan_Knda"
+    }
+
+    private fun sourceSpinnerIndexForTargetApiCode(code: String): Int {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val idx = languageValues.indexOfFirst { LANGUAGE_VALUE_TO_API_CODE[it] == code }
+        return if (idx >= 0) idx else 0
+    }
+
+    private fun targetSpinnerIndexForApiCode(code: String): Int {
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val idx = targetCodes.indexOf(code)
+        return if (idx >= 0) idx else 0
+    }
+
+    private fun swapSourceAndTargetLanguages() {
+        val srcCode = apiCodeForSourceSpinnerIndex(sourceLanguageSpinner.selectedItemPosition)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val tgtPos = targetLanguageSpinner.selectedItemPosition
+        if (tgtPos !in targetCodes.indices) return
+        val tgtCode = targetCodes[tgtPos]
+        val newSrcIdx = sourceSpinnerIndexForTargetApiCode(tgtCode)
+        val newTgtIdx = targetSpinnerIndexForApiCode(srcCode)
+        sourceLanguageSpinner.setSelection(newSrcIdx, false)
+        targetLanguageSpinner.setSelection(newTgtIdx, false)
+        saveLanguageSelections()
+    }
+
+    private fun launchGalleryPicker() {
+        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     private fun launchCamera() {
         val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraAfterPermission = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
             return
         }
+        pendingCameraAfterPermission = false
         currentPhotoUri = createTempImageFileUri()
         currentPhotoUri?.let { takePictureLauncher.launch(it) }
     }
@@ -209,7 +327,8 @@ class TranslateActivity : MessageActivity() {
 
     override fun onResume() {
         super.onResume()
-        Log.d("TranslateActivity", "onResume called")
+        updateRecyclerViewPadding()
+        scrollToLatestMessage()
     }
 
     private fun getTranslationResponse(input: String) {
@@ -217,23 +336,7 @@ class TranslateActivity : MessageActivity() {
         val sourceIndex = sourceLanguageSpinner.selectedItemPosition
         val languageValues = resources.getStringArray(R.array.language_values)
         val selectedLanguage = languageValues[sourceIndex]
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu",
-            "german" to "deu_Latn",
-            "french" to "fra_Latn",
-            "dutch" to "nld_Latn",
-            "spanish" to "spa_Latn",
-            "italian" to "ita_Latn",
-            "portuguese" to "por_Latn",
-            "russian" to "rus_Cyrl",
-            "polish" to "pol_Latn"
-        )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang = LANGUAGE_VALUE_TO_API_CODE[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
@@ -278,10 +381,10 @@ class TranslateActivity : MessageActivity() {
                 onSuccess = { response ->
                     val translatedText = response.translations.joinToString("\n")
                     val timestamp = DateUtils.getCurrentTimestamp()
-                    val message = Message("Translation: $translatedText", timestamp, false, null, null)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    scrollToLatestMessage()
+                    val sid = currentSessionId ?: return@performApiCall
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        getSessionRepository().addMessage(sid, "Translation: $translatedText", timestamp, isQuery = false, null, null)
+                    }
                 },
                 onError = { e -> Log.e("TranslateActivity", "Translation failed: ${e.message}", e) }
             )
@@ -289,9 +392,7 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
-        Log.d("TranslateActivity", "Handling image upload for URI: $uri, fromCamera: $isFromCamera")
         val fileName = getFileName(uri)
-        Log.d("TranslateActivity", "File name: $fileName")
         val query = "Extract text from image"
 
         var tempFile: File? = null
@@ -300,7 +401,6 @@ class TranslateActivity : MessageActivity() {
             if (isFromCamera && photoFile != null && photoFile!!.exists()) {
                 // For camera, use the photoFile directly
                 tempFile = photoFile
-                Log.d("TranslateActivity", "Using camera photo file: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             } else {
                 // For gallery, copy from inputStream
                 val inputStream = contentResolver.openInputStream(uri)
@@ -316,7 +416,6 @@ class TranslateActivity : MessageActivity() {
                     return
                 }
 
-                Log.d("TranslateActivity", "Copied gallery file to: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             }
 
             // Check if file was successfully created and has content
@@ -349,12 +448,13 @@ class TranslateActivity : MessageActivity() {
     }
 
     private fun processImageUpload(file: File, uri: Uri, query: String, fileType: String) {
-        val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val message = Message("Image translation...", timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        historyRecyclerView.requestLayout()
-        scrollToLatestMessage()
+        val sessionId = currentSessionId ?: return
+        val timestamp = DateUtils.getCurrentTimestamp()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessageWithAttachment(
+                sessionId, "Image translation...", timestamp, true, uri, fileType
+            )
+        }
         getVisualQueryResponse(query, file, fileType)
     }
 
@@ -414,7 +514,6 @@ class TranslateActivity : MessageActivity() {
             }
 
             bitmap.recycle()
-            Log.d("TranslateActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("TranslateActivity", "Image compression failed: ${e.message}", e)
@@ -437,23 +536,7 @@ class TranslateActivity : MessageActivity() {
         val sourceIndex = sourceLanguageSpinner.selectedItemPosition
         val languageValues = resources.getStringArray(R.array.language_values)
         val selectedLanguage = languageValues[sourceIndex]
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu",
-            "german" to "deu_Latn",
-            "french" to "fra_Latn",
-            "dutch" to "nld_Latn",
-            "spanish" to "spa_Latn",
-            "italian" to "ita_Latn",
-            "portuguese" to "por_Latn",
-            "russian" to "rus_Cyrl",
-            "polish" to "pol_Latn"
-        )
-        val srcLang: String = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang: String = LANGUAGE_VALUE_TO_API_CODE[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         // Encrypt the query and languages for consistency with text translation API
@@ -467,8 +550,6 @@ class TranslateActivity : MessageActivity() {
                 val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = encryptedQuery.toRequestBody("text/plain".toMediaType())
-                Log.d("TranslateActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                Log.d("TranslateActivity", "Encrypted Query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
                 val response = RetrofitClient.apiService(this@TranslateActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -477,12 +558,14 @@ class TranslateActivity : MessageActivity() {
                     RetrofitClient.getApiKey()
                 )
                 val answerText = response.answer
-                val timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val message = Message("Translation: $answerText", timestamp, false, null, null) // No uri/fileType for response
+                val timestamp = DateUtils.getCurrentTimestamp()
+                val sid = currentSessionId
+                if (sid != null) {
+                    getSessionRepository().addMessage(
+                        sid, "Translation: $answerText", timestamp, isQuery = false, null, null
+                    )
+                }
                 runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    historyRecyclerView.requestLayout()
                     scrollToLatestMessage()
                 }
             } catch (e: Exception) {
@@ -495,6 +578,39 @@ class TranslateActivity : MessageActivity() {
                 if (file.exists()) {
                     file.delete()
                 }
+            }
+        }
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.TRANSLATE,
+            onSessionSelected = { sessionId -> switchToSession(sessionId) },
+            onNewSessionRequested = { createNewSession() }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = getSessionRepository().createSession(SessionType.TRANSLATE, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
             }
         }
     }
@@ -513,7 +629,6 @@ class TranslateActivity : MessageActivity() {
         }
         photoFile = null
         currentPhotoUri = null
-        Log.d("TranslateActivity", "onDestroy called")
     }
 
     override fun onRequestPermissionsResult(
@@ -523,18 +638,14 @@ class TranslateActivity : MessageActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
-            READ_STORAGE_PERMISSION_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, user can now pick images from storage
-                } else {
-                    Toast.makeText(this, "Storage permission denied. Cannot access gallery images.", Toast.LENGTH_SHORT).show()
-                }
-            }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, can now launch camera
-                    launchCamera()
+                    if (pendingCameraAfterPermission) {
+                        pendingCameraAfterPermission = false
+                        launchCamera()
+                    }
                 } else {
+                    pendingCameraAfterPermission = false
                     Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
                 }
             }

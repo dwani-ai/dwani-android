@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -18,17 +19,13 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,7 +37,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.slabstech.dhwani.voiceai.repository.SessionRepository
+import com.slabstech.dhwani.voiceai.repository.SessionType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -51,7 +52,8 @@ class AnswerActivity : MessageActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private val CAMERA_PERMISSION_CODE = 102
-    private var audioRecord: AudioRecord? = null
+    private var pendingCameraAfterPermission = false
+    private var holdToTalkController: HoldToTalkController? = null
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
@@ -60,7 +62,6 @@ class AnswerActivity : MessageActivity() {
     private lateinit var cameraButton: ImageButton
     private lateinit var toolbar: Toolbar
     private lateinit var ttsProgressBar: ProgressBar
-    private var isRecording = false
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
 
@@ -83,6 +84,24 @@ class AnswerActivity : MessageActivity() {
 
     private var photoFile: File? = null
     private var currentPhotoUri: Uri? = null
+    private var messageCollectionJob: kotlinx.coroutines.Job? = null
+
+    override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
+
+    private fun loadMessagesForSession(sessionId: String) {
+        messageCollectionJob?.cancel()
+        messageCollectionJob = lifecycleScope.launch {
+            getSessionRepository().getMessages(sessionId).collectLatest { list ->
+                withContext(Dispatchers.Main) {
+                    messageList.clear()
+                    messageList.addAll(list)
+                    messageAdapter.notifyDataSetChanged()
+                    updateEmptyState()
+                    scrollToLatestMessage()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,9 +123,34 @@ class AnswerActivity : MessageActivity() {
         ttsProgressBar = findViewById(R.id.ttsProgressBar)
 
         setSupportActionBar(toolbar)
+        emptyStateView = findViewById(R.id.emptyStateView)
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
-        setupInsets()
+        setupAnswerStyleWindowInsets()
+
+        findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
+
+        val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
+        val intentSessionId = intent.getStringExtra("SESSION_ID")
+        lifecycleScope.launch {
+            val session = withContext(Dispatchers.IO) {
+                when {
+                    restoredSessionId != null -> {
+                        getSessionRepository().getSession(restoredSessionId)
+                            ?: getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
+                    intentSessionId != null -> {
+                        getSessionRepository().getSession(intentSessionId)
+                            ?: getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
+                    else -> {
+                        getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
+                }
+            }
+            currentSessionId = session.id
+            loadMessagesForSession(session.id)
+        }
 
         // Preferences initialization
         if (!prefs.contains(AUTO_PLAY_KEY)) {
@@ -114,25 +158,6 @@ class AnswerActivity : MessageActivity() {
         }
         if (!prefs.contains("tts_enabled")) {
             prefs.edit().putBoolean("tts_enabled", false).apply()
-        }
-
-        // Audio permission check
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
-
-        // Camera permission check
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                CAMERA_PERMISSION_CODE
-            )
         }
 
         // Push to Talk Record Toggle
@@ -143,7 +168,7 @@ class AnswerActivity : MessageActivity() {
                     animateFabRecordingStart()
                     true
                 }
-                MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     stopRecording()
                     animateFabRecordingStop()
                     true
@@ -192,21 +217,21 @@ class AnswerActivity : MessageActivity() {
             }
         }
 
-        // Toggle between TTS and Send button
+        // Send button always visible; disabled when empty. FAB hidden when typing.
+        sendButton.visibility = View.VISIBLE
         textQueryInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) {
-                if (s.isNullOrEmpty()) {
-                    sendButton.visibility = View.GONE
-                    pushToTalkFab.visibility = View.VISIBLE
-                } else {
-                    sendButton.visibility = View.VISIBLE
-                    pushToTalkFab.visibility = View.GONE
-                }
+                val hasText = !s.isNullOrEmpty()
+                sendButton.isEnabled = hasText
+                sendButton.alpha = if (hasText) 1f else 0.5f
+                pushToTalkFab.visibility = if (hasText) View.GONE else View.VISIBLE
             }
 
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.5f
     }
 
     private fun showKeyboard() {
@@ -214,41 +239,12 @@ class AnswerActivity : MessageActivity() {
         imm.showSoftInput(textQueryInput, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    private fun setupInsets() {
-        val rootView = findViewById<View>(R.id.coordinatorLayout)
-        val bottomBar = findViewById<View>(R.id.bottomBar)
-        val bottomNav = findViewById<View>(R.id.bottomNavigation)
-
-        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(0, systemBars.top, 0, 0) // Top padding for status bar
-            Log.d("AnswerActivity", "RootView insets applied: top=${systemBars.top}")
-            insets
-        }
-
-        ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
-            view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 8) // Buffer for spacing
-            Log.d("AnswerActivity", "BottomBar padding updated: bottom=${imeInsets.bottom + systemBars.bottom + 8}")
-            insets
-        }
-
-        ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(bottom = systemBars.bottom)
-            Log.d("AnswerActivity", "BottomNav padding updated: bottom=${systemBars.bottom}")
-            insets
-        }
-    }
-
     private fun submitQuery(query: String) {
+        val sessionId = currentSessionId ?: return
         val timestamp = DateUtils.getCurrentTimestamp()
-        val message = Message("Query: $query", timestamp, true, null, null)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        Log.d("AnswerActivity", "Message added, scrolling to position: ${messageList.size - 1}")
-        scrollToLatestMessage()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessage(sessionId, "Query: $query", timestamp, isQuery = true, null, null)
+        }
         getChatResponse(query)
         textQueryInput.text.clear()
         // Hide keyboard after sending
@@ -258,13 +254,14 @@ class AnswerActivity : MessageActivity() {
 
     override fun onResume() {
         super.onResume()
-        Log.d("AnswerActivity", "onResume called")
         updateRecyclerViewPadding() // Refresh padding on resume
         scrollToLatestMessage() // Ensure latest message is visible
     }
 
     private fun startRecording() {
-        AudioUtils.startPushToTalkRecording(this, audioLevelBar, { animateFabRecordingStart() }) { file ->
+        if (holdToTalkController != null) return
+        holdToTalkController = AudioUtils.startPushToTalkRecording(this, audioLevelBar, {}) { file ->
+            holdToTalkController = null
             file?.let {
                 val uri = Uri.fromFile(it)
                 sendAudioToApi(it, uri)
@@ -273,8 +270,7 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun stopRecording() {
-        AudioUtils.stopRecording(audioRecord, isRecording)
-        animateFabRecordingStop()
+        holdToTalkController?.requestStop()
     }
 
     private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
@@ -303,11 +299,14 @@ class AnswerActivity : MessageActivity() {
                     val timestamp = DateUtils.getCurrentTimestamp()
 
                     if (voiceQueryText.isNotEmpty()) {
-                        val message = Message("Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio")
-                        messageList.add(message)
-                        messageAdapter.notifyItemInserted(messageList.size - 1)
-                        Log.d("AnswerActivity", "Voice message added, scrolling to position: ${messageList.size - 1}")
-                        scrollToLatestMessage()
+                        val sid = currentSessionId
+                        if (sid != null) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                getSessionRepository().addMessageWithAttachment(
+                                    sid, "Voice Query: $voiceQueryText", timestamp, true, audioUri, "audio"
+                                )
+                            }
+                        }
                         getChatResponse(voiceQueryText)
                     } else {
                         Toast.makeText(this@AnswerActivity, "Voice query empty", Toast.LENGTH_SHORT).show()
@@ -351,23 +350,35 @@ class AnswerActivity : MessageActivity() {
                 onSuccess = { response ->
                     val answerText = response.response
                     val timestamp = DateUtils.getCurrentTimestamp()
-                    val message = Message("Answer: $answerText", timestamp, false, null, null)
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    Log.d("AnswerActivity", "Chat response added, scrolling to position: ${messageList.size - 1}")
-                    scrollToLatestMessage()
-                    SpeechUtils.textToSpeech(
-                        context = this@AnswerActivity,
-                        scope = lifecycleScope,
-                        text = answerText,
-                        message = message,
-                        recyclerView = historyRecyclerView,
-                        adapter = messageAdapter,
-                        ttsProgressBarVisibility = { visible ->
-                            ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
-                        },
-                        srcLang = langCode
-                    )
+                    val sid = currentSessionId ?: return@performApiCall
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val chatMsg = getSessionRepository().addMessage(
+                            sid, "Answer: $answerText", timestamp, isQuery = false, null, null
+                        )
+                        withContext(Dispatchers.Main) {
+                            val message = Message(
+                                text = chatMsg.text,
+                                timestamp = chatMsg.timestamp,
+                                isQuery = false,
+                                uri = null,
+                                fileType = null,
+                                id = chatMsg.id
+                            )
+                            scrollToLatestMessage()
+                            SpeechUtils.textToSpeech(
+                                context = this@AnswerActivity,
+                                scope = lifecycleScope,
+                                text = answerText,
+                                message = message,
+                                recyclerView = historyRecyclerView,
+                                adapter = messageAdapter,
+                                ttsProgressBarVisibility = { visible ->
+                                    ttsProgressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                                },
+                                srcLang = langCode
+                            )
+                        }
+                    }
                 },
                 onError = { e -> Log.e("AnswerActivity", "Chat failed: ${e.message}", e) }
             )
@@ -399,8 +410,6 @@ class AnswerActivity : MessageActivity() {
                 val requestFile = file.asRequestBody("image/png".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
                 val queryPart = encryptedQuery.toRequestBody("text/plain".toMediaType())
-                Log.d("AnswerActivity", "File part - name: ${file.name}, size: ${file.length()}")
-                Log.d("AnswerActivity", "Encrypted Query: $encryptedQuery, src_lang: $encryptedSrcLang, tgt_lang: $encryptedTgtLang")
                 val response = RetrofitClient.apiService(this@AnswerActivity).visualQuery(
                     filePart,
                     queryPart,
@@ -410,12 +419,13 @@ class AnswerActivity : MessageActivity() {
                 )
                 val answerText = response.answer
                 val timestamp = DateUtils.getCurrentTimestamp()
-                val message = Message("Answer: $answerText", timestamp, false, null, null)
-                runOnUiThread {
-                    messageList.add(message)
-                    messageAdapter.notifyItemInserted(messageList.size - 1)
-                    scrollToLatestMessage()
+                val sid = currentSessionId
+                if (sid != null) {
+                    getSessionRepository().addMessage(
+                        sid, "Answer: $answerText", timestamp, isQuery = false, null, null
+                    )
                 }
+                runOnUiThread { scrollToLatestMessage() }
             } catch (e: Exception) {
                 Log.e("AnswerActivity", "Image analysis failed: ${e.message}", e)
                 runOnUiThread {
@@ -433,9 +443,11 @@ class AnswerActivity : MessageActivity() {
     private fun launchCamera() {
         val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraAfterPermission = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
             return
         }
+        pendingCameraAfterPermission = false
         currentPhotoUri = createTempImageFileUri()
         currentPhotoUri?.let { takePictureLauncher.launch(it) }
     }
@@ -454,7 +466,6 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
-        Log.d("AnswerActivity", "Handling image upload for URI: $uri, fromCamera: $isFromCamera")
         val query = textQueryInput.text.toString().trim()
         if (query.isEmpty()) {
             Toast.makeText(this, "Please enter a query for the image", Toast.LENGTH_SHORT).show()
@@ -467,7 +478,6 @@ class AnswerActivity : MessageActivity() {
             if (isFromCamera && photoFile != null && photoFile!!.exists()) {
                 // For camera, use the photoFile directly
                 tempFile = photoFile
-                Log.d("AnswerActivity", "Using camera photo file: ${tempFile!!.absolutePath}, size: ${tempFile!!.length()}")
             } else {
                 // Fallback for non-camera (not used currently)
                 Log.w("AnswerActivity", "Non-camera image upload not implemented")
@@ -505,12 +515,13 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun processImageUpload(file: File, uri: Uri, query: String, fileType: String) {
+        val sessionId = currentSessionId ?: return
         val timestamp = DateUtils.getCurrentTimestamp()
-        val message = Message("Query: $query (with image)", timestamp, true, uri, fileType)
-        messageList.add(message)
-        messageAdapter.notifyItemInserted(messageList.size - 1)
-        Log.d("AnswerActivity", "Image message added, scrolling to position: ${messageList.size - 1}")
-        scrollToLatestMessage()
+        lifecycleScope.launch(Dispatchers.IO) {
+            getSessionRepository().addMessageWithAttachment(
+                sessionId, "Query: $query (with image)", timestamp, true, uri, fileType
+            )
+        }
         textQueryInput.text.clear()
         // Hide keyboard after sending
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -574,7 +585,6 @@ class AnswerActivity : MessageActivity() {
             }
 
             bitmap.recycle()
-            Log.d("AnswerActivity", "Compressed file: ${outputFile.absolutePath}, size: ${outputFile.length()}")
             return outputFile
         } catch (e: Exception) {
             Log.e("AnswerActivity", "Image compression failed: ${e.message}", e)
@@ -623,10 +633,10 @@ class AnswerActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        holdToTalkController?.requestStop()
+        holdToTalkController = null
         mediaPlayer?.release()
         mediaPlayer = null
-        audioRecord?.release()
-        audioRecord = null
         // Final cleanup for any lingering camera temp file
         photoFile?.let { file ->
             if (file.exists()) {
@@ -635,6 +645,43 @@ class AnswerActivity : MessageActivity() {
         }
         photoFile = null
         currentPhotoUri = null
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sessions -> {
+                showSessionListBottomSheet()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showSessionListBottomSheet() {
+        val bottomSheet = SessionListBottomSheet.newInstance(
+            sessionType = SessionType.ANSWER,
+            onSessionSelected = { sessionId ->
+                switchToSession(sessionId)
+            },
+            onNewSessionRequested = {
+                createNewSession()
+            }
+        )
+        bottomSheet.show(supportFragmentManager, "SessionListBottomSheet")
+    }
+
+    private fun switchToSession(sessionId: String) {
+        currentSessionId = sessionId
+        loadMessagesForSession(sessionId)
+    }
+
+    private fun createNewSession() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newSession = getSessionRepository().createSession(SessionType.ANSWER, null)
+            withContext(Dispatchers.Main) {
+                switchToSession(newSession.id)
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -653,9 +700,12 @@ class AnswerActivity : MessageActivity() {
             }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, can now launch camera
-                    launchCamera()
+                    if (pendingCameraAfterPermission) {
+                        pendingCameraAfterPermission = false
+                        launchCamera()
+                    }
                 } else {
+                    pendingCameraAfterPermission = false
                     Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
                 }
             }

@@ -25,6 +25,22 @@
             app:title="Documents"
             app:titleTextColor="#FFFFFF"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+
+        <TextView
+            android:id="@+id/toolbarSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            android:text="@string/toolbar_chats_tap"
+            android:textColor="#E0FFFFFF"
+            android:textSize="12sp"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/toolbar_chats_tap"
+            android:background="?attr/selectableItemBackground"/>
     </com.google.android.material.appbar.AppBarLayout>
 
     <!-- Audio bar below appBar -->
@@ -41,6 +57,22 @@
         app:layout_constraintTop_toBottomOf="@id/appBarLayout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Empty state when no messages -->
+    <TextView
+        android:id="@+id/emptyStateView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:gravity="center"
+        android:padding="24dp"
+        android:text="@string/empty_state_docs"
+        android:textColor="@color/whatsapp_timestamp"
+        android:textSize="16sp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView

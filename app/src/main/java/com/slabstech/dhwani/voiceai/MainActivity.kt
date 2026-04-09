@@ -25,13 +25,15 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(this, AnswerActivity::class.java))
                     finish() // Finish MainActivity to prevent back navigation
                     true
-                }/* TODO- add translate as menuView
+                }
                 R.id.nav_translate -> {
                     startActivity(Intent(this, TranslateActivity::class.java))
+                    finish()
                     true
-                }*/
-                R.id.nav_docs -> {
-                    startActivity(Intent(this, DocsActivity::class.java))
+                }
+                R.id.nav_assistant -> {
+                    startActivity(Intent(this, VoiceAssistantActivity::class.java))
+                    finish()
                     true
                 }
                 R.id.nav_voice -> {
@@ -42,12 +44,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Launch AnswerActivity by default and finish MainActivity
         if (savedInstanceState == null) {
-            startActivity(Intent(this, VoiceDetectionActivity::class.java))
+            startActivity(Intent(this, VoiceAssistantActivity::class.java))
             finish()
         }
 
-        bottomNavigation.selectedItemId = R.id.nav_voice
+        bottomNavigation.selectedItemId = R.id.nav_assistant
     }
 }

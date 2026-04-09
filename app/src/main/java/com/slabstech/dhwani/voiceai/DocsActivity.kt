@@ -254,16 +254,6 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
-                    R.id.nav_vision -> {
-                        AlertDialog.Builder(this)
-                            .setMessage("Switch to Vision?")
-                            .setPositiveButton("Yes") { _, _ ->
-                                startActivity(Intent(this, VisionActivity::class.java))
-                            }
-                            .setNegativeButton("No", null)
-                            .show()
-                        false
-                    }
                     R.id.nav_docs -> true
                     else -> false
                 }

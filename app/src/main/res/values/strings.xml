@@ -19,4 +19,5 @@
     <string name="voice_assistant_label_reply">Reply</string>
     <string name="voice_assistant_hold_content_description">Hold to talk</string>
     <string name="voice_assistant_too_short">Hold a bit longer to record.</string>
+    <string name="voice_assistant_mic_hint">Mic below — hold to talk</string>
 </resources>

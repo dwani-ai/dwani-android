@@ -81,6 +81,8 @@ class TranslateActivity : MessageActivity() {
 
     private val READ_STORAGE_PERMISSION_CODE = 101
     private val CAMERA_PERMISSION_CODE = 102
+    private var pendingGalleryAfterStoragePermission = false
+    private var pendingCameraAfterPermission = false
 
     override fun getSessionRepository(): SessionRepository = (application as DhwaniApp).sessionRepository
 
@@ -137,28 +139,6 @@ class TranslateActivity : MessageActivity() {
             }
         }
 
-        // Conditional permission request: Only for pre-Android 13 where Photo Picker isn't available
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    READ_STORAGE_PERMISSION_CODE
-                )
-            }
-        }
-
-        // Request camera permission if not granted
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                CAMERA_PERMISSION_CODE
-            )
-        }
-
         // Set default source language to Kannada
         val languageValues = resources.getStringArray(R.array.language_values)
         val defaultSourceIndex = languageValues.indexOf("kannada")
@@ -182,8 +162,7 @@ class TranslateActivity : MessageActivity() {
         }
 
         attachImageButton.setOnClickListener {
-            // Use Photo Picker for images (permissionless on Android 13+)
-            pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            launchGalleryPicker()
         }
 
         cameraButton.setOnClickListener {
@@ -227,12 +206,31 @@ class TranslateActivity : MessageActivity() {
         }
     }
 
+    private fun launchGalleryPicker() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                pendingGalleryAfterStoragePermission = true
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
+                    READ_STORAGE_PERMISSION_CODE
+                )
+                return
+            }
+        }
+        pendingGalleryAfterStoragePermission = false
+        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
     private fun launchCamera() {
         val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraAfterPermission = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
             return
         }
+        pendingCameraAfterPermission = false
         currentPhotoUri = createTempImageFileUri()
         currentPhotoUri?.let { takePictureLauncher.launch(it) }
     }
@@ -595,16 +593,23 @@ class TranslateActivity : MessageActivity() {
         when (requestCode) {
             READ_STORAGE_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, user can now pick images from storage
+                    if (pendingGalleryAfterStoragePermission) {
+                        pendingGalleryAfterStoragePermission = false
+                        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 } else {
+                    pendingGalleryAfterStoragePermission = false
                     Toast.makeText(this, "Storage permission denied. Cannot access gallery images.", Toast.LENGTH_SHORT).show()
                 }
             }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, can now launch camera
-                    launchCamera()
+                    if (pendingCameraAfterPermission) {
+                        pendingCameraAfterPermission = false
+                        launchCamera()
+                    }
                 } else {
+                    pendingCameraAfterPermission = false
                     Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
                 }
             }

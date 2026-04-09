@@ -55,6 +55,7 @@ class AnswerActivity : MessageActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private val CAMERA_PERMISSION_CODE = 102
+    private var pendingCameraAfterPermission = false
     private var holdToTalkController: HoldToTalkController? = null
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
@@ -153,25 +154,6 @@ class AnswerActivity : MessageActivity() {
         }
         if (!prefs.contains("tts_enabled")) {
             prefs.edit().putBoolean("tts_enabled", false).apply()
-        }
-
-        // Audio permission check
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
-
-        // Camera permission check
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                CAMERA_PERMISSION_CODE
-            )
         }
 
         // Push to Talk Record Toggle
@@ -482,9 +464,11 @@ class AnswerActivity : MessageActivity() {
     private fun launchCamera() {
         val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (cameraPermission != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraAfterPermission = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
             return
         }
+        pendingCameraAfterPermission = false
         currentPhotoUri = createTempImageFileUri()
         currentPhotoUri?.let { takePictureLauncher.launch(it) }
     }
@@ -737,9 +721,12 @@ class AnswerActivity : MessageActivity() {
             }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, can now launch camera
-                    launchCamera()
+                    if (pendingCameraAfterPermission) {
+                        pendingCameraAfterPermission = false
+                        launchCamera()
+                    }
                 } else {
+                    pendingCameraAfterPermission = false
                     Toast.makeText(this, "Camera permission denied. Cannot take photos.", Toast.LENGTH_SHORT).show()
                 }
             }

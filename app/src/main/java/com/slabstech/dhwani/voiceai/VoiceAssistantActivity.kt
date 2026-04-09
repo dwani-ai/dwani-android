@@ -1,7 +1,5 @@
 package com.slabstech.dhwani.voiceai
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.util.Log
@@ -11,8 +9,6 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -27,7 +23,6 @@ import java.io.File
 
 class VoiceAssistantActivity : AuthenticatedActivity() {
 
-    private val recordAudioPermissionCode = 101
     private var holdToTalkController: HoldToTalkController? = null
     private var mediaPlayer: MediaPlayer? = null
     private var isPipelineBusy = false
@@ -58,14 +53,6 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
 
         setSupportActionBar(toolbar)
         NavigationUtils.setupBottomNavigation(this, bottomNavigation, R.id.nav_assistant)
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                recordAudioPermissionCode
-            )
-        }
 
         holdToTalkFab.setOnTouchListener { _, event ->
             when (event.action) {

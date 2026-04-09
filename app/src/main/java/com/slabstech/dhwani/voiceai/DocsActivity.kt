@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.Editable
@@ -56,9 +55,7 @@ import java.util.*
 
 class DocsActivity : AppCompatActivity() {
 
-    private val READ_STORAGE_PERMISSION_CODE = 101
     private val CAMERA_PERMISSION_CODE = 102
-    private var pendingGalleryAfterStoragePermission = false
     private var pendingCameraAfterPermission = false
     private lateinit var historyRecyclerView: RecyclerView
     private lateinit var progressBar: ProgressBar
@@ -292,19 +289,7 @@ class DocsActivity : AppCompatActivity() {
     }
 
     private fun launchGalleryPicker() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                pendingGalleryAfterStoragePermission = true
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    READ_STORAGE_PERMISSION_CODE
-                )
-                return
-            }
-        }
-        pendingGalleryAfterStoragePermission = false
+        // Photo Picker / SAF does not require READ_MEDIA_* or READ_EXTERNAL_STORAGE.
         pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
@@ -910,17 +895,6 @@ class DocsActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
-            READ_STORAGE_PERMISSION_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    if (pendingGalleryAfterStoragePermission) {
-                        pendingGalleryAfterStoragePermission = false
-                        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }
-                } else {
-                    pendingGalleryAfterStoragePermission = false
-                    Toast.makeText(this, "Storage permission denied. Cannot open gallery.", Toast.LENGTH_SHORT).show()
-                }
-            }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     if (pendingCameraAfterPermission) {

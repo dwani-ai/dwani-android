@@ -8,4 +8,15 @@
     <string name="empty_state_translate">Type a sentence or attach an image to translate</string>
     <string name="empty_state_docs">Attach an image, document, or audio to get started</string>
     <string name="toolbar_chats_tap">Chats • Tap to switch</string>
+    <string name="nav_assistant">Assistant</string>
+    <string name="voice_assistant_title">Assistant</string>
+    <string name="voice_assistant_hint">Hold the button and speak. Release when finished.</string>
+    <string name="voice_assistant_status_idle">Ready</string>
+    <string name="voice_assistant_status_listening">Listening…</string>
+    <string name="voice_assistant_status_processing">Processing…</string>
+    <string name="voice_assistant_status_speaking">Speaking…</string>
+    <string name="voice_assistant_label_transcript">You said</string>
+    <string name="voice_assistant_label_reply">Reply</string>
+    <string name="voice_assistant_hold_content_description">Hold to talk</string>
+    <string name="voice_assistant_too_short">Hold a bit longer to record.</string>
 </resources>

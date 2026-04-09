@@ -29,7 +29,6 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,7 +55,7 @@ class AnswerActivity : MessageActivity() {
 
     private val RECORD_AUDIO_PERMISSION_CODE = 100
     private val CAMERA_PERMISSION_CODE = 102
-    private var audioRecord: AudioRecord? = null
+    private var holdToTalkController: HoldToTalkController? = null
     private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var pushToTalkFab: FloatingActionButton
@@ -65,7 +64,6 @@ class AnswerActivity : MessageActivity() {
     private lateinit var cameraButton: ImageButton
     private lateinit var toolbar: Toolbar
     private lateinit var ttsProgressBar: ProgressBar
-    private var isRecording = false
     private var mediaPlayer: MediaPlayer? = null
     private val AUTO_PLAY_KEY = "auto_play_tts"
 
@@ -184,7 +182,7 @@ class AnswerActivity : MessageActivity() {
                     animateFabRecordingStart()
                     true
                 }
-                MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     stopRecording()
                     animateFabRecordingStop()
                     true
@@ -300,7 +298,9 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun startRecording() {
-        AudioUtils.startPushToTalkRecording(this, audioLevelBar, { animateFabRecordingStart() }) { file ->
+        if (holdToTalkController != null) return
+        holdToTalkController = AudioUtils.startPushToTalkRecording(this, audioLevelBar, {}) { file ->
+            holdToTalkController = null
             file?.let {
                 val uri = Uri.fromFile(it)
                 sendAudioToApi(it, uri)
@@ -309,8 +309,7 @@ class AnswerActivity : MessageActivity() {
     }
 
     private fun stopRecording() {
-        AudioUtils.stopRecording(audioRecord, isRecording)
-        animateFabRecordingStop()
+        holdToTalkController?.requestStop()
     }
 
     private fun sendAudioToApi(audioFile: File, audioUri: Uri) {
@@ -671,10 +670,10 @@ class AnswerActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        holdToTalkController?.requestStop()
+        holdToTalkController = null
         mediaPlayer?.release()
         mediaPlayer = null
-        audioRecord?.release()
-        audioRecord = null
         // Final cleanup for any lingering camera temp file
         photoFile?.let { file ->
             if (file.exists()) {

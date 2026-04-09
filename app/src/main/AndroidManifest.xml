@@ -37,6 +37,7 @@
                 android:value=".AnswerActivity" />
         </activity>
         <activity android:name=".VoiceDetectionActivity" />
+        <activity android:name=".VoiceAssistantActivity" />
         <activity android:name=".TranslateActivity" />
         <activity android:name=".DocsActivity" />
 

@@ -234,6 +234,16 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
+                    R.id.nav_assistant -> {
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Assistant?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, VoiceAssistantActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
+                    }
                     R.id.nav_voice -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Voice?")

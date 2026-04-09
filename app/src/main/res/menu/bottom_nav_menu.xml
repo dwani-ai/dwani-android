@@ -16,6 +16,10 @@
         android:icon="@android:drawable/ic_menu_help"
         android:title="answer"/>
     <item
+        android:id="@+id/nav_assistant"
+        android:icon="@drawable/ic_mic"
+        android:title="@string/nav_assistant"/>
+    <item
         android:id="@+id/nav_translate"
         android:icon="@android:drawable/ic_menu_search"
         android:title="translate"

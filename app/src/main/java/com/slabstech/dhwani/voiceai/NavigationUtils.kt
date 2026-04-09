@@ -16,6 +16,18 @@ object NavigationUtils {
         bottomNavigation.setOnItemSelectedListener { item ->
             Log.d(TAG, "Navigating to item: ${item.itemId}")
             when (item.itemId) {
+                R.id.nav_assistant -> {
+                    if (currentItemId != R.id.nav_assistant) {
+                        Log.d(TAG, "Switching to VoiceAssistantActivity")
+                        val intent = Intent(context, VoiceAssistantActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        }
+                        context.startActivity(intent)
+                    } else {
+                        Log.d(TAG, "Already on VoiceAssistantActivity, no action needed")
+                    }
+                    true
+                }
                 R.id.nav_voice -> {
                     if (currentItemId != R.id.nav_voice) {
                         Log.d(TAG, "Switching to VoiceDetectionActivity")

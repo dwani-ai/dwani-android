@@ -34,6 +34,11 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(this, DocsActivity::class.java))
                     true
                 }
+                R.id.nav_assistant -> {
+                    startActivity(Intent(this, VoiceAssistantActivity::class.java))
+                    finish()
+                    true
+                }
                 R.id.nav_voice -> {
                     startActivity(Intent(this, VoiceDetectionActivity::class.java))
                     true

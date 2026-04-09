@@ -130,15 +130,22 @@ class AnswerActivity : MessageActivity() {
 
         findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
-        // Get session ID from Intent or create/get current session
+        val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
         val intentSessionId = intent.getStringExtra("SESSION_ID")
         lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
-                if (intentSessionId != null) {
-                    getSessionRepository().getSession(intentSessionId)
-                        ?: getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
-                } else {
-                    getSessionRepository().getOrCreateCurrentSession(SessionType.ANSWER)
+                when {
+                    restoredSessionId != null -> {
+                        getSessionRepository().getSession(restoredSessionId)
+                            ?: getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
+                    intentSessionId != null -> {
+                        getSessionRepository().getSession(intentSessionId)
+                            ?: getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
+                    else -> {
+                        getSessionRepository().createSession(SessionType.ANSWER, null)
+                    }
                 }
             }
             currentSessionId = session.id

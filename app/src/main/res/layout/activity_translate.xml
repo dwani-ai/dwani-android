@@ -55,16 +55,28 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginEnd="8dp"
+                android:layout_marginEnd="4dp"
                 android:entries="@array/language_names"
                 android:prompt="@string/source_language"/>
+
+            <ImageButton
+                android:id="@+id/swapLanguagesButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/translate_swap_languages"
+                android:padding="8dp"
+                android:src="@drawable/ic_swap_languages"
+                app:tint="@color/whatsapp_green"/>
 
             <Spinner
                 android:id="@+id/targetLanguageSpinner"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="4dp"
                 android:entries="@array/target_languages"
                 android:prompt="@string/target_language"/>
 

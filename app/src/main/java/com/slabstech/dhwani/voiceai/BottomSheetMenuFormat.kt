@@ -19,7 +19,6 @@ class BottomSheetMenuFragment : BottomSheetDialogFragment() {
 
         val answerOption = view.findViewById<TextView>(R.id.option_answer)
         val translateOption = view.findViewById<TextView>(R.id.option_translate)
-        val docsOption = view.findViewById<TextView>(R.id.option_docs)
         val voiceDetectionOption = view.findViewById<TextView>(R.id.option_voice_detection) // Add this in your layout
 
         answerOption.setOnClickListener {
@@ -29,11 +28,6 @@ class BottomSheetMenuFragment : BottomSheetDialogFragment() {
 
         translateOption.setOnClickListener {
             startActivity(Intent(requireContext(), TranslateActivity::class.java))
-            dismiss()
-        }
-
-        docsOption.setOnClickListener {
-            startActivity(Intent(requireContext(), DocsActivity::class.java))
             dismiss()
         }
 

@@ -179,15 +179,22 @@ class DocsActivity : AppCompatActivity() {
                 setBackgroundColor(ContextCompat.getColor(this@DocsActivity, android.R.color.transparent))
             }
 
-            // Get session ID from Intent or create/get current session
+            val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
             val intentSessionId = intent.getStringExtra("SESSION_ID")
             lifecycleScope.launch {
                 val session = withContext(Dispatchers.IO) {
-                    if (intentSessionId != null) {
-                        sessionRepository.getSession(intentSessionId)
-                            ?: sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
-                    } else {
-                        sessionRepository.getOrCreateCurrentSession(SessionType.DOCS)
+                    when {
+                        restoredSessionId != null -> {
+                            sessionRepository.getSession(restoredSessionId)
+                                ?: sessionRepository.createSession(SessionType.DOCS, null)
+                        }
+                        intentSessionId != null -> {
+                            sessionRepository.getSession(intentSessionId)
+                                ?: sessionRepository.createSession(SessionType.DOCS, null)
+                        }
+                        else -> {
+                            sessionRepository.createSession(SessionType.DOCS, null)
+                        }
                     }
                 }
                 withContext(Dispatchers.Main) {
@@ -234,12 +241,21 @@ class DocsActivity : AppCompatActivity() {
                             .show()
                         false
                     }
-                    R.id.nav_docs -> true
+                    R.id.nav_translate -> {
+                        AlertDialog.Builder(this)
+                            .setMessage("Switch to Translate?")
+                            .setPositiveButton("Yes") { _, _ ->
+                                startActivity(Intent(this, TranslateActivity::class.java))
+                            }
+                            .setNegativeButton("No", null)
+                            .show()
+                        false
+                    }
                     else -> false
                 }
             }
 
-            bottomNavigation.selectedItemId = R.id.nav_docs
+            bottomNavigation.selectedItemId = R.id.nav_answer
         } catch (e: Exception) {
             Log.e("DocsActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -324,6 +340,11 @@ class DocsActivity : AppCompatActivity() {
             currentTheme = isDarkTheme
             recreate()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        currentSessionId?.let { outState.putString(MessageActivity.STATE_CURRENT_SESSION_ID, it) }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

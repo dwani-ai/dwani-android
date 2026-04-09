@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.view.View
 import android.widget.ImageButton
 import android.widget.Toast
@@ -154,5 +155,14 @@ abstract class MessageActivity : AuthenticatedActivity() {
         NavigationUtils.setupBottomNavigation(this, bottomNavigation, currentItemId)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        currentSessionId?.let { outState.putString(STATE_CURRENT_SESSION_ID, it) }
+    }
+
     abstract fun toggleAudioPlayback(message: Message, button: ImageButton)
+
+    companion object {
+        const val STATE_CURRENT_SESSION_ID = "dwani_current_session_id"
+    }
 }

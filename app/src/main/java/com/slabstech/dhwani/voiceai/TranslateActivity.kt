@@ -19,6 +19,7 @@ import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.Toast
+import androidx.preference.PreferenceManager
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
@@ -52,7 +53,33 @@ class TranslateActivity : MessageActivity() {
     private lateinit var cameraButton: ImageButton
     private lateinit var sourceLanguageSpinner: Spinner
     private lateinit var targetLanguageSpinner: Spinner
+    private lateinit var swapLanguagesButton: ImageButton
     private lateinit var toolbar: Toolbar
+
+    private val translatePrefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+
+    companion object {
+        private const val PREF_TRANSLATE_SOURCE_VALUE = "translate_source_language_value"
+        private const val PREF_TRANSLATE_TARGET_CODE = "translate_target_language_code"
+
+        /** Lowercase keys from [R.array.language_values] → API script codes. */
+        private val LANGUAGE_VALUE_TO_API_CODE: Map<String, String> = mapOf(
+            "english" to "eng_Latn",
+            "hindi" to "hin_Deva",
+            "kannada" to "kan_Knda",
+            "tamil" to "tam_Taml",
+            "malayalam" to "mal_Mlym",
+            "telugu" to "tel_Telu",
+            "german" to "deu_Latn",
+            "french" to "fra_Latn",
+            "dutch" to "nld_Latn",
+            "spanish" to "spa_Latn",
+            "italian" to "ita_Latn",
+            "portuguese" to "por_Latn",
+            "russian" to "rus_Cyrl",
+            "polish" to "pol_Latn"
+        )
+    }
 
     // Launcher for gallery images using Photo Picker (Android 13+ recommended, falls back on older)
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -116,6 +143,7 @@ class TranslateActivity : MessageActivity() {
         cameraButton = findViewById(R.id.cameraButton)
         sourceLanguageSpinner = findViewById(R.id.sourceLanguageSpinner)
         targetLanguageSpinner = findViewById(R.id.targetLanguageSpinner)
+        swapLanguagesButton = findViewById(R.id.swapLanguagesButton)
         toolbar = findViewById(R.id.toolbar)
 
         setSupportActionBar(toolbar)
@@ -125,15 +153,22 @@ class TranslateActivity : MessageActivity() {
 
         findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
-        // Get session ID from Intent or create/get current session
+        val restoredSessionId = savedInstanceState?.getString(MessageActivity.STATE_CURRENT_SESSION_ID)
         val intentSessionId = intent.getStringExtra("SESSION_ID")
         lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
-                if (intentSessionId != null) {
-                    getSessionRepository().getSession(intentSessionId)
-                        ?: getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
-                } else {
-                    getSessionRepository().getOrCreateCurrentSession(SessionType.TRANSLATE)
+                when {
+                    restoredSessionId != null -> {
+                        getSessionRepository().getSession(restoredSessionId)
+                            ?: getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
+                    intentSessionId != null -> {
+                        getSessionRepository().getSession(intentSessionId)
+                            ?: getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
+                    else -> {
+                        getSessionRepository().createSession(SessionType.TRANSLATE, null)
+                    }
                 }
             }
             withContext(Dispatchers.Main) {
@@ -142,12 +177,9 @@ class TranslateActivity : MessageActivity() {
             }
         }
 
-        // Set default source language to Kannada
-        val languageValues = resources.getStringArray(R.array.language_values)
-        val defaultSourceIndex = languageValues.indexOf("kannada")
-        if (defaultSourceIndex != -1) {
-            sourceLanguageSpinner.setSelection(defaultSourceIndex)
-        }
+        applySavedLanguageSelections()
+
+        swapLanguagesButton.setOnClickListener { swapSourceAndTargetLanguages() }
 
         sendButton.setOnClickListener {
             val query = textQueryInput.text.toString().trim()
@@ -187,26 +219,84 @@ class TranslateActivity : MessageActivity() {
         sendButton.isEnabled = false
         sendButton.alpha = 0.5f
 
-        // Optional: Handle spinner item selection changes if needed
         sourceLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // Handle source language change if needed
+                saveLanguageSelections()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                // Handle no selection
-            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         targetLanguageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // Handle target language change if needed
+                saveLanguageSelections()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                // Handle no selection
-            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+    }
+
+    private fun applySavedLanguageSelections() {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val savedSource = translatePrefs.getString(PREF_TRANSLATE_SOURCE_VALUE, null)
+        val savedTargetCode = translatePrefs.getString(PREF_TRANSLATE_TARGET_CODE, null)
+
+        val sourceIndex = when {
+            savedSource != null -> languageValues.indexOf(savedSource).takeIf { it >= 0 }
+            else -> null
+        } ?: languageValues.indexOf("kannada").takeIf { it >= 0 } ?: 0
+
+        val targetIndex = when {
+            savedTargetCode != null -> targetCodes.indexOf(savedTargetCode).takeIf { it >= 0 }
+            else -> null
+        } ?: targetCodes.indexOf("eng_Latn").takeIf { it >= 0 } ?: 0
+
+        sourceLanguageSpinner.setSelection(sourceIndex, false)
+        targetLanguageSpinner.setSelection(targetIndex, false)
+    }
+
+    private fun saveLanguageSelections() {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val srcPos = sourceLanguageSpinner.selectedItemPosition
+        val tgtPos = targetLanguageSpinner.selectedItemPosition
+        if (srcPos !in languageValues.indices || tgtPos !in targetCodes.indices) return
+        translatePrefs.edit()
+            .putString(PREF_TRANSLATE_SOURCE_VALUE, languageValues[srcPos])
+            .putString(PREF_TRANSLATE_TARGET_CODE, targetCodes[tgtPos])
+            .apply()
+    }
+
+    private fun apiCodeForSourceSpinnerIndex(index: Int): String {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        if (index !in languageValues.indices) return "kan_Knda"
+        return LANGUAGE_VALUE_TO_API_CODE[languageValues[index]] ?: "kan_Knda"
+    }
+
+    private fun sourceSpinnerIndexForTargetApiCode(code: String): Int {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val idx = languageValues.indexOfFirst { LANGUAGE_VALUE_TO_API_CODE[it] == code }
+        return if (idx >= 0) idx else 0
+    }
+
+    private fun targetSpinnerIndexForApiCode(code: String): Int {
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val idx = targetCodes.indexOf(code)
+        return if (idx >= 0) idx else 0
+    }
+
+    private fun swapSourceAndTargetLanguages() {
+        val srcCode = apiCodeForSourceSpinnerIndex(sourceLanguageSpinner.selectedItemPosition)
+        val targetCodes = resources.getStringArray(R.array.target_language_codes)
+        val tgtPos = targetLanguageSpinner.selectedItemPosition
+        if (tgtPos !in targetCodes.indices) return
+        val tgtCode = targetCodes[tgtPos]
+        val newSrcIdx = sourceSpinnerIndexForTargetApiCode(tgtCode)
+        val newTgtIdx = targetSpinnerIndexForApiCode(srcCode)
+        sourceLanguageSpinner.setSelection(newSrcIdx, false)
+        targetLanguageSpinner.setSelection(newTgtIdx, false)
+        saveLanguageSelections()
     }
 
     private fun launchGalleryPicker() {
@@ -262,23 +352,7 @@ class TranslateActivity : MessageActivity() {
         val sourceIndex = sourceLanguageSpinner.selectedItemPosition
         val languageValues = resources.getStringArray(R.array.language_values)
         val selectedLanguage = languageValues[sourceIndex]
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu",
-            "german" to "deu_Latn",
-            "french" to "fra_Latn",
-            "dutch" to "nld_Latn",
-            "spanish" to "spa_Latn",
-            "italian" to "ita_Latn",
-            "portuguese" to "por_Latn",
-            "russian" to "rus_Cyrl",
-            "polish" to "pol_Latn"
-        )
-        val srcLang = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang = LANGUAGE_VALUE_TO_API_CODE[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         val words = input.split("\\s+".toRegex()).filter { it.isNotBlank() }
@@ -478,23 +552,7 @@ class TranslateActivity : MessageActivity() {
         val sourceIndex = sourceLanguageSpinner.selectedItemPosition
         val languageValues = resources.getStringArray(R.array.language_values)
         val selectedLanguage = languageValues[sourceIndex]
-        val languageMap = mapOf(
-            "english" to "eng_Latn",
-            "hindi" to "hin_Deva",
-            "kannada" to "kan_Knda",
-            "tamil" to "tam_Taml",
-            "malayalam" to "mal_Mlym",
-            "telugu" to "tel_Telu",
-            "german" to "deu_Latn",
-            "french" to "fra_Latn",
-            "dutch" to "nld_Latn",
-            "spanish" to "spa_Latn",
-            "italian" to "ita_Latn",
-            "portuguese" to "por_Latn",
-            "russian" to "rus_Cyrl",
-            "polish" to "pol_Latn"
-        )
-        val srcLang: String = languageMap[selectedLanguage] ?: "kan_Knda"
+        val srcLang: String = LANGUAGE_VALUE_TO_API_CODE[selectedLanguage] ?: "kan_Knda"
         val tgtLang = resources.getStringArray(R.array.target_language_codes)[targetLanguageSpinner.selectedItemPosition]
 
         // Encrypt the query and languages for consistency with text translation API

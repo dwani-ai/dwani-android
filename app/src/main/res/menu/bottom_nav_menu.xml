@@ -19,9 +19,4 @@
         android:icon="@android:drawable/ic_menu_search"
         android:title="translate"
         />
-
-    <item
-        android:id="@+id/nav_docs"
-        android:icon="@android:drawable/ic_menu_gallery"
-        android:title="docs"/>
 </menu>

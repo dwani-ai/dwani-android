@@ -89,7 +89,7 @@ class DhwaniActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }/* TODO - add translate as menu view
+                    }
                     R.id.nav_translate -> {
                         AlertDialog.Builder(this)
                             .setMessage("Switch to Translate?")
@@ -99,21 +99,11 @@ class DhwaniActivity : AppCompatActivity() {
                             .setNegativeButton("No", null)
                             .show()
                         false
-                    }*/
-                    R.id.nav_docs -> {
-                        AlertDialog.Builder(this)
-                            .setMessage("Switch to Docs?")
-                            .setPositiveButton("Yes") { _, _ ->
-                                startActivity(Intent(this, DocsActivity::class.java))
-                            }
-                            .setNegativeButton("No", null)
-                            .show()
-                        false
                     }
                     else -> false
                 }
             }
-            bottomNavigation.selectedItemId = R.id.nav_docs // Placeholder; adjust if nav_voice added
+            bottomNavigation.selectedItemId = R.id.nav_answer
         } catch (e: Exception) {
             android.util.Log.e("DhwaniActivity", "Crash in onCreate: ${e.message}", e)
             Toast.makeText(this, "Initialization failed: ${e.message}", Toast.LENGTH_LONG).show()

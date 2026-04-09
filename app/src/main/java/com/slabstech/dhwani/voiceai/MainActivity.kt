@@ -47,12 +47,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Launch AnswerActivity by default and finish MainActivity
         if (savedInstanceState == null) {
-            startActivity(Intent(this, VoiceDetectionActivity::class.java))
+            startActivity(Intent(this, VoiceAssistantActivity::class.java))
             finish()
         }
 
-        bottomNavigation.selectedItemId = R.id.nav_voice
+        bottomNavigation.selectedItemId = R.id.nav_assistant
     }
 }

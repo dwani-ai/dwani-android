@@ -19,10 +19,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import android.animation.ObjectAnimator
@@ -129,7 +126,7 @@ class AnswerActivity : MessageActivity() {
         emptyStateView = findViewById(R.id.emptyStateView)
         setupMessageList()
         setupBottomNavigation(R.id.nav_answer)
-        setupInsets()
+        setupAnswerStyleWindowInsets()
 
         findViewById<View>(R.id.toolbarSubtitle)?.setOnClickListener { showSessionListBottomSheet() }
 
@@ -233,31 +230,6 @@ class AnswerActivity : MessageActivity() {
     private fun showKeyboard() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(textQueryInput, InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun setupInsets() {
-        val rootView = findViewById<View>(R.id.coordinatorLayout)
-        val bottomBar = findViewById<View>(R.id.bottomBar)
-        val bottomNav = findViewById<View>(R.id.bottomNavigation)
-
-        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(0, systemBars.top, 0, 0) // Top padding for status bar
-            insets
-        }
-
-        ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
-            view.updatePadding(bottom = imeInsets.bottom + systemBars.bottom + 8) // Buffer for spacing
-            insets
-        }
-
-        ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(bottom = systemBars.bottom)
-            insets
-        }
     }
 
     private fun submitQuery(query: String) {

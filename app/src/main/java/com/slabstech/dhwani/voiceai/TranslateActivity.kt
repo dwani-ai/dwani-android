@@ -23,6 +23,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
+import androidx.core.view.WindowCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -103,7 +104,9 @@ class TranslateActivity : MessageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_translate)
+        setupAnswerStyleWindowInsets()
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
         progressBar = findViewById(R.id.progressBar)
@@ -250,6 +253,8 @@ class TranslateActivity : MessageActivity() {
 
     override fun onResume() {
         super.onResume()
+        updateRecyclerViewPadding()
+        scrollToLatestMessage()
     }
 
     private fun getTranslationResponse(input: String) {

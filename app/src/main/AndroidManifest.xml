@@ -18,12 +18,7 @@
 
         <activity
             android:name=".AnswerActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false" />
         <activity android:name=".DhwaniActivity" />
         <activity
             android:name=".OnboardingActivity"
@@ -31,13 +26,20 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
-            android:parentActivityName=".AnswerActivity">
+            android:parentActivityName=".VoiceAssistantActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value=".AnswerActivity" />
+                android:value=".VoiceAssistantActivity" />
         </activity>
         <activity android:name=".VoiceDetectionActivity" />
-        <activity android:name=".VoiceAssistantActivity" />
+        <activity
+            android:name=".VoiceAssistantActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <activity android:name=".TranslateActivity" />
         <activity android:name=".DocsActivity" />
 

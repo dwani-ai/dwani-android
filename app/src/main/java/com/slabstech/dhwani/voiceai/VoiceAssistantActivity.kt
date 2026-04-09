@@ -9,6 +9,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -39,7 +40,9 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_voice_assistant)
+        setupAnswerStyleWindowInsets()
 
         toolbar = findViewById(R.id.toolbar)
         bottomNavigation = findViewById(R.id.bottomNavigation)

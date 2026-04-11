@@ -33,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.slabstech.dhwani.voiceai.repository.SessionRepository
 import com.slabstech.dhwani.voiceai.repository.SessionType
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -475,6 +476,22 @@ class TranslateActivity : MessageActivity() {
                         }
                     }
                     scrollToLatestMessage()
+                    val prefs = PreferenceManager.getDefaultSharedPreferences(this@TranslateActivity)
+                    if (prefs.getBoolean("tts_enabled", false) &&
+                        prefs.getBoolean("auto_play_tts", true) &&
+                        translation.isNotBlank()
+                    ) {
+                        SpeechUtils.playTtsStandalone(
+                            context = this@TranslateActivity,
+                            scope = lifecycleScope,
+                            text = translation,
+                            forcePlay = false,
+                            ttsLanguageOverride = outputLanguage,
+                            ttsProgressBarVisibility = { visible ->
+                                progressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            }
+                        )
+                    }
                     audioFile.delete()
                 },
                 onError = { e ->

@@ -28,6 +28,7 @@ data class ExtractTextResponse(val page_content: String)
 data class DocumentSummaryResponse(val pages: List<Page>, val summary: String)
 data class Page(val page_number: Int, val page_text: String)
 data class PdfSummaryResponse(val translated_summary: String)
+data class TranslateVoiceResponse(val transcription: String, val translation: String)
 
 interface ApiService {
     @POST("v1/token")
@@ -72,6 +73,16 @@ interface ApiService {
 
     @Multipart
     @Headers("Accept: application/json")
+    @POST("v1/translate_voice/")
+    suspend fun translateVoice(
+        @Part file: MultipartBody.Part,
+        @Query("input_language") inputLanguage: String,
+        @Query("output_language") outputLanguage: String,
+        @Header("X-API-Key") apiKey: String
+    ): TranslateVoiceResponse
+
+    @Multipart
+    @Headers("Accept: application/json")
     @POST("v1/indic_visual_query")
     suspend fun visualQuery(
         @Part file: MultipartBody.Part,
@@ -110,7 +121,7 @@ interface ApiService {
 
 object RetrofitClient {
     /** Must match settings default; no trailing slash (stored/compared in preferences as host URL). */
-    const val DEFAULT_API_ENDPOINT = "https://mobile"
+    const val DEFAULT_API_ENDPOINT = "https://mobile-api"
 
     private fun retrofitBaseUrl(prefsUrl: String): String {
         val trimmed = prefsUrl.trim().trimEnd('/')

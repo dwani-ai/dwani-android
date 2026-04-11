@@ -41,6 +41,38 @@ object SpeechUtils {
         "tel_Telu"   // Telugu
     )
 
+    /**
+     * Maps Translate screen target language (lowercase, e.g. [R.array.target_languages]) to the
+     * `language` query for [RetrofitClient.apiService].`textToSpeech`.
+     */
+    private fun ttsApiLanguageFromTranslateTarget(targetLowercase: String): String = when (targetLowercase.lowercase()) {
+        "english" -> "english"
+        "hindi" -> "hindi"
+        "kannada" -> "kannada"
+        "tamil" -> "tamil"
+        "german" -> "german"
+        "telugu" -> "telugu"
+        "malayalam" -> "malayalam"
+        "french" -> "french"
+        "dutch" -> "dutch"
+        "spanish" -> "spanish"
+        "italian" -> "italian"
+        "portuguese" -> "portuguese"
+        "russian" -> "russian"
+        "polish" -> "polish"
+        else -> "kannada"
+    }
+
+    private fun ttsApiLanguageFromPrefs(prefsLanguage: String): String = when (prefsLanguage.lowercase()) {
+        "hindi" -> "hindi"
+        "tamil" -> "tamil"
+        "english" -> "english"
+        "german" -> "german"
+        "telugu" -> "telugu"
+        "malayalam" -> "malayalam"
+        else -> "kannada"
+    }
+
     fun textToSpeech(
         context: Context,
         scope: LifecycleCoroutineScope,
@@ -70,13 +102,7 @@ object SpeechUtils {
         scope.launch {
             ttsProgressBarVisibility(true)
             val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-            val supportedLanguage = when (selectedLanguage.lowercase()) {
-                "hindi" -> "hindi"
-                "tamil" -> "tamil"
-                "english" -> "english"
-                "german" -> "german"
-                else -> "kannada"
-            }
+            val supportedLanguage = ttsApiLanguageFromPrefs(selectedLanguage)
             try {
                 Log.d("SpeechUtils", "Calling TTS API with input length: ${truncatedText.length}")
                 val response = withContext(Dispatchers.IO) {
@@ -164,12 +190,16 @@ object SpeechUtils {
     /**
      * Fetches audio from the TTS endpoint and plays it. When [forcePlay] is true, ignores the global
      * `tts_enabled` preference (for voice-assistant style flows).
+     *
+     * When [ttsLanguageOverride] is non-blank, it is used as the TTS `language` (lowercase target name
+     * from Translate, e.g. `english`); otherwise the global Settings `language` preference is used.
      */
     fun playTtsStandalone(
         context: Context,
         scope: LifecycleCoroutineScope,
         text: String,
         forcePlay: Boolean = true,
+        ttsLanguageOverride: String? = null,
         ttsProgressBarVisibility: (Boolean) -> Unit,
         onPlayerReady: (MediaPlayer) -> Unit = {},
         onPlaybackComplete: () -> Unit = {},
@@ -190,13 +220,11 @@ object SpeechUtils {
 
         scope.launch {
             ttsProgressBarVisibility(true)
-            val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
-            val supportedLanguage = when (selectedLanguage.lowercase()) {
-                "hindi" -> "hindi"
-                "tamil" -> "tamil"
-                "english" -> "english"
-                "german" -> "german"
-                else -> "kannada"
+            val supportedLanguage = if (!ttsLanguageOverride.isNullOrBlank()) {
+                ttsApiLanguageFromTranslateTarget(ttsLanguageOverride)
+            } else {
+                val selectedLanguage = prefs.getString("language", "kannada") ?: "kannada"
+                ttsApiLanguageFromPrefs(selectedLanguage)
             }
             try {
                 Log.d("SpeechUtils", "playTtsStandalone input length: ${truncatedText.length}")

@@ -11,6 +11,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.widget.AdapterView
 import android.widget.EditText
@@ -22,13 +23,17 @@ import androidx.preference.PreferenceManager
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.slabstech.dhwani.voiceai.repository.SessionRepository
 import com.slabstech.dhwani.voiceai.repository.SessionType
+import com.slabstech.dhwani.voiceai.utils.SpeechUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -45,7 +50,11 @@ import java.util.*
 
 class TranslateActivity : MessageActivity() {
 
+    private val RECORD_AUDIO_PERMISSION_CODE = 100
+    private var holdToTalkController: HoldToTalkController? = null
+    private lateinit var audioLevelBar: ProgressBar
     private lateinit var progressBar: ProgressBar
+    private lateinit var pushToTalkFab: FloatingActionButton
     private lateinit var textQueryInput: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var attachImageButton: ImageButton
@@ -133,7 +142,9 @@ class TranslateActivity : MessageActivity() {
         setupAnswerStyleWindowInsets()
 
         historyRecyclerView = findViewById(R.id.historyRecyclerView)
+        audioLevelBar = findViewById(R.id.audioLevelBar)
         progressBar = findViewById(R.id.progressBar)
+        pushToTalkFab = findViewById(R.id.pushToTalkFab)
         textQueryInput = findViewById(R.id.textQueryInput)
         sendButton = findViewById(R.id.sendButton)
         attachImageButton = findViewById(R.id.attachImageButton)
@@ -201,6 +212,22 @@ class TranslateActivity : MessageActivity() {
             launchCamera()
         }
 
+        pushToTalkFab.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startRecording()
+                    animateFabRecordingStart()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopRecording()
+                    animateFabRecordingStop()
+                    true
+                }
+                else -> false
+            }
+        }
+
         sendButton.visibility = View.VISIBLE
         textQueryInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -211,6 +238,7 @@ class TranslateActivity : MessageActivity() {
                 val hasText = !s.isNullOrEmpty()
                 sendButton.isEnabled = hasText
                 sendButton.alpha = if (hasText) 1f else 0.5f
+                pushToTalkFab.visibility = if (hasText) View.GONE else View.VISIBLE
             }
         })
         sendButton.isEnabled = false
@@ -389,6 +417,115 @@ class TranslateActivity : MessageActivity() {
                 onError = { e -> Log.e("TranslateActivity", "Translation failed: ${e.message}", e) }
             )
         }
+    }
+
+    private fun startRecording() {
+        if (holdToTalkController != null) return
+        holdToTalkController = AudioUtils.startPushToTalkRecording(this, audioLevelBar, {}) { file ->
+            holdToTalkController = null
+            file?.let { sendVoiceTranslate(it) }
+        }
+    }
+
+    private fun stopRecording() {
+        holdToTalkController?.requestStop()
+    }
+
+    private fun sendVoiceTranslate(audioFile: File) {
+        val languageValues = resources.getStringArray(R.array.language_values)
+        val targetLangNames = resources.getStringArray(R.array.target_languages)
+        val srcIdx = sourceLanguageSpinner.selectedItemPosition
+        val tgtIdx = targetLanguageSpinner.selectedItemPosition
+        if (srcIdx !in languageValues.indices || tgtIdx !in targetLangNames.indices) {
+            audioFile.delete()
+            return
+        }
+        val inputLanguage = languageValues[srcIdx]
+        val outputLanguage = targetLangNames[tgtIdx].lowercase(Locale.US)
+
+        val requestFile = audioFile.asRequestBody("audio/wav".toMediaType())
+        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
+
+        lifecycleScope.launch {
+            ApiUtils.performApiCall(
+                context = this@TranslateActivity,
+                progressBar = progressBar,
+                apiCall = {
+                    RetrofitClient.apiService(this@TranslateActivity).translateVoice(
+                        filePart,
+                        inputLanguage,
+                        outputLanguage,
+                        RetrofitClient.getApiKey()
+                    )
+                },
+                onSuccess = { response ->
+                    val transcription = response.transcription
+                    val translation = response.translation
+                    if (transcription.isBlank()) {
+                        Toast.makeText(this@TranslateActivity, "Voice transcription empty", Toast.LENGTH_SHORT).show()
+                        audioFile.delete()
+                        return@performApiCall
+                    }
+                    val sid = currentSessionId
+                    if (sid != null) {
+                        val tsIn = DateUtils.getCurrentTimestamp()
+                        val tsOut = DateUtils.getCurrentTimestamp()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            getSessionRepository().addMessage(sid, "Input: $transcription", tsIn, isQuery = true, null, null)
+                            getSessionRepository().addMessage(sid, "Translation: $translation", tsOut, isQuery = false, null, null)
+                        }
+                    }
+                    scrollToLatestMessage()
+                    val prefs = PreferenceManager.getDefaultSharedPreferences(this@TranslateActivity)
+                    if (prefs.getBoolean("tts_enabled", false) &&
+                        prefs.getBoolean("auto_play_tts", true) &&
+                        translation.isNotBlank()
+                    ) {
+                        SpeechUtils.playTtsStandalone(
+                            context = this@TranslateActivity,
+                            scope = lifecycleScope,
+                            text = translation,
+                            forcePlay = false,
+                            ttsLanguageOverride = outputLanguage,
+                            ttsProgressBarVisibility = { visible ->
+                                progressBar.visibility = if (visible) View.VISIBLE else View.GONE
+                            }
+                        )
+                    }
+                    audioFile.delete()
+                },
+                onError = { e ->
+                    Log.e("TranslateActivity", "Voice translate failed: ${e.message}", e)
+                    audioFile.delete()
+                }
+            )
+        }
+    }
+
+    private fun animateFabRecordingStart() {
+        pushToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+        ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.2f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.2f)
+        ).apply {
+            duration = 200
+            start()
+        }
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+    }
+
+    private fun animateFabRecordingStop() {
+        pushToTalkFab.setImageResource(R.drawable.ic_mic)
+        ObjectAnimator.ofPropertyValuesHolder(
+            pushToTalkFab,
+            PropertyValuesHolder.ofFloat("scaleX", 1.2f, 1.0f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.2f, 1.0f)
+        ).apply {
+            duration = 200
+            start()
+        }
+        pushToTalkFab.backgroundTintList = ContextCompat.getColorStateList(this, R.color.whatsapp_green)
     }
 
     private fun handleImageUpload(uri: Uri, isFromCamera: Boolean) {
@@ -621,6 +758,8 @@ class TranslateActivity : MessageActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        holdToTalkController?.requestStop()
+        holdToTalkController = null
         // Final cleanup for any lingering camera temp file (unlikely, but safe)
         photoFile?.let { file ->
             if (file.exists()) {
@@ -638,6 +777,11 @@ class TranslateActivity : MessageActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
+            RECORD_AUDIO_PERMISSION_CODE -> {
+                if (grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Audio permission denied. Cannot record voice.", Toast.LENGTH_SHORT).show()
+                }
+            }
             CAMERA_PERMISSION_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     if (pendingCameraAfterPermission) {

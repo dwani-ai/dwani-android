@@ -1,5 +1,10 @@
 package com.slabstech.dhwani.voiceai
 
+import android.animation.Animator
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.util.Log
@@ -9,6 +14,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -27,6 +33,8 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
     private var holdToTalkController: HoldToTalkController? = null
     private var mediaPlayer: MediaPlayer? = null
     private var isPipelineBusy = false
+    /** Scale-up + breathing pulse while mic is held; cancelled on release. */
+    private var pressHoldAnimator: Animator? = null
 
     private lateinit var toolbar: Toolbar
     private lateinit var bottomNavigation: BottomNavigationView
@@ -61,9 +69,13 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startHoldToTalk()
+                    if (holdToTalkController != null) {
+                        startPressVisuals()
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopPressVisuals()
                     stopHoldToTalk()
                     true
                 }
@@ -91,6 +103,54 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
 
     private fun stopHoldToTalk() {
         holdToTalkController?.requestStop()
+    }
+
+    private fun startPressVisuals() {
+        pressHoldAnimator?.cancel()
+        holdToTalkFab.setImageResource(android.R.drawable.ic_media_pause)
+        holdToTalkFab.backgroundTintList =
+            ContextCompat.getColorStateList(this, android.R.color.holo_red_light)
+
+        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+            holdToTalkFab,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.12f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.12f)
+        ).apply { duration = 180 }
+
+        val pulse = ObjectAnimator.ofPropertyValuesHolder(
+            holdToTalkFab,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1.12f, 1.04f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.12f, 1.04f)
+        ).apply {
+            duration = 650
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+        }
+
+        pressHoldAnimator = AnimatorSet().apply {
+            playSequentially(scaleUp, pulse)
+            start()
+        }
+    }
+
+    private fun stopPressVisuals() {
+        pressHoldAnimator?.cancel()
+        pressHoldAnimator = null
+        holdToTalkFab.setImageResource(R.drawable.ic_mic)
+        holdToTalkFab.backgroundTintList =
+            ContextCompat.getColorStateList(this, R.color.whatsapp_green)
+        val sx = holdToTalkFab.scaleX
+        val sy = holdToTalkFab.scaleY
+        if (sx != 1f || sy != 1f) {
+            ObjectAnimator.ofPropertyValuesHolder(
+                holdToTalkFab,
+                PropertyValuesHolder.ofFloat(View.SCALE_X, sx, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, sy, 1f)
+            ).apply {
+                duration = 200
+                start()
+            }
+        }
     }
 
     private fun runPipeline(audioFile: File) {
@@ -179,6 +239,7 @@ class VoiceAssistantActivity : AuthenticatedActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopPressVisuals()
         holdToTalkController?.requestStop()
         holdToTalkController = null
         releaseMediaPlayer()

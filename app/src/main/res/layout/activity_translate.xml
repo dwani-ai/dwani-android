@@ -84,6 +84,20 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
+    <!-- Audio level while holding mic -->
+    <ProgressBar
+        android:id="@+id/audioLevelBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="0dp"
+        android:layout_height="8dp"
+        android:max="100"
+        android:progressTint="@color/whatsapp_green"
+        android:background="#D0C8B8"
+        android:layout_margin="8dp"
+        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
     <!-- Empty state when no messages -->
     <TextView
         android:id="@+id/emptyStateView"
@@ -95,7 +109,7 @@
         android:textColor="@color/whatsapp_timestamp"
         android:textSize="16sp"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -108,7 +122,7 @@
         android:padding="8dp"
         android:clipToPadding="false"
         android:scrollbars="vertical"
-        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintTop_toBottomOf="@id/audioLevelBar"
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -171,7 +185,19 @@
             android:src="@drawable/ic_camera"
             android:contentDescription="Take Photo"
             android:background="@android:color/transparent"
-            android:tint="@color/whatsapp_green"/>
+            android:tint="@color/whatsapp_green"
+            android:layout_marginEnd="4dp"/>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/pushToTalkFab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_mic"
+            android:contentDescription="@string/voice_assistant_hold_content_description"
+            app:backgroundTint="@color/whatsapp_green"
+            app:tint="#FFFFFF"
+            android:focusable="false"
+            android:focusableInTouchMode="false"/>
 
     </LinearLayout>
 

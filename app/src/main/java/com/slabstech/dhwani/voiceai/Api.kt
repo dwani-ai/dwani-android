@@ -121,7 +121,7 @@ interface ApiService {
 
 object RetrofitClient {
     /** Must match settings default; no trailing slash (stored/compared in preferences as host URL). */
-    const val DEFAULT_API_ENDPOINT = "https://mobile-api"
+    const val DEFAULT_API_ENDPOINT = "https://mobile-api.dwani.ai"
 
     private fun retrofitBaseUrl(prefsUrl: String): String {
         val trimmed = prefsUrl.trim().trimEnd('/')
